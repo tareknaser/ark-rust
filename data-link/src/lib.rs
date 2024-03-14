@@ -1,12 +1,11 @@
 use data_error::Result;
 use data_resource::ResourceId;
 use fs_atomic_versions::atomic::AtomicFile;
-use fs_storage::meta::store_metadata;
-use fs_storage::prop::load_raw_properties;
-use fs_storage::prop::store_properties;
-use fs_storage::{
-    ARK_FOLDER, PREVIEWS_STORAGE_FOLDER, PROPERTIES_STORAGE_FOLDER,
-};
+use fs_metadata::store_metadata;
+use fs_properties::load_raw_properties;
+use fs_properties::store_properties;
+use fs_properties::PROPERTIES_STORAGE_FOLDER;
+use fs_storage::{ARK_FOLDER, PREVIEWS_STORAGE_FOLDER};
 use reqwest::header::HeaderValue;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
