@@ -31,7 +31,7 @@ pub struct ResourceId {}
 #[derive(
     Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Debug, Serialize, Deserialize,
 )]
-pub struct Hash(Vec<u8>);
+pub struct Hash(Vec<u64>);
 
 impl Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
