@@ -264,12 +264,12 @@ mod tests {
         file_storage.set("key1".to_string(), "value1".to_string());
         file_storage.set("key1".to_string(), "value2".to_string());
 
-        assert_eq!(storage_path.exists(), true);
+        assert!(storage_path.exists());
 
         if let Err(err) = file_storage.erase() {
             panic!("Failed to delete file: {:?}", err);
         }
-        assert_eq!(storage_path.exists(), false);
+        assert!(!storage_path.exists());
     }
 
     #[test]
@@ -282,7 +282,7 @@ mod tests {
             FileStorage::new("TestStorage".to_string(), &storage_path);
 
         file_storage.set("key1".to_string(), "value1".to_string());
-        assert_eq!(file_storage.is_storage_updated().unwrap(), false);
+        assert!(!file_storage.is_storage_updated().unwrap());
 
         std::thread::sleep(std::time::Duration::from_secs(1));
 
@@ -291,8 +291,8 @@ mod tests {
             FileStorage::new("TestStorage".to_string(), &storage_path);
 
         mirror_storage.set("key1".to_string(), "value3".to_string());
-        assert_eq!(mirror_storage.is_storage_updated().unwrap(), false);
+        assert!(!mirror_storage.is_storage_updated().unwrap());
 
-        assert_eq!(file_storage.is_storage_updated().unwrap(), true);
+        assert!(file_storage.is_storage_updated().unwrap());
     }
 }

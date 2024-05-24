@@ -106,7 +106,7 @@ impl ResourceIndex {
             match CanonicalPathBuf::canonicalize(&path) {
                 Ok(path) => {
                     log::trace!("[load] {} -> {}", id, path.display());
-                    index.insert_entry(path, IndexEntry { id, modified });
+                    index.insert_entry(path, IndexEntry { modified, id });
                 }
                 Err(_) => {
                     log::warn!("File {} not found", path.display());
@@ -628,7 +628,7 @@ fn scan_entry(path: &CanonicalPath, metadata: Metadata) -> Result<IndexEntry> {
     let id = ResourceId::compute(size, path)?;
     let modified = metadata.modified()?;
 
-    Ok(IndexEntry { id, modified })
+    Ok(IndexEntry { modified, id })
 }
 
 fn scan_entries(
@@ -672,9 +672,9 @@ mod tests {
     use data_resource::ResourceId;
     use fs_atomic_versions::initialize;
     use std::fs::File;
-    #[cfg(target_os = "linux")]
+    #[cfg(target_family = "unix")]
     use std::fs::Permissions;
-    #[cfg(target_os = "linux")]
+    #[cfg(target_family = "unix")]
     use std::os::unix::fs::PermissionsExt;
 
     use std::path::PathBuf;
@@ -972,7 +972,7 @@ mod tests {
 
             assert_eq!(actual.collisions.len(), 0);
             assert_eq!(actual.size(), 2);
-            #[cfg(target_os = "linux")]
+            #[cfg(target_family = "unix")]
             file.set_permissions(Permissions::from_mode(0o222))
                 .expect("Should be fine");
 
@@ -1156,7 +1156,7 @@ mod tests {
         );
 
         let start_time = Instant::now();
-        let index = ResourceIndex::build(path.to_string());
+        let index = ResourceIndex::build(path);
         let elapsed_time = start_time.elapsed();
 
         println!("Number of paths: {}", index.id2path.len());
