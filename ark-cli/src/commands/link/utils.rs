@@ -3,8 +3,7 @@ use data_link::Link;
 use std::path::PathBuf;
 use url::Url;
 
-use crate::error::AppError;
-use crate::util::provide_index; // Import your custom AppError type
+use crate::{error::AppError, util::provide_index}; // Import your custom AppError type
 
 pub async fn create_link(
     root: &PathBuf,
