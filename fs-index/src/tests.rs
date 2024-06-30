@@ -1,427 +1,603 @@
-use crate::{
-    index::{discover_paths, IndexEntry},
-    ResourceIndex,
-};
-use canonical_path::CanonicalPathBuf;
+use std::{fs, path::Path};
+
+use anyhow::{anyhow, Result};
+use tempfile::TempDir;
+
+use data_resource::ResourceId;
 use dev_hash::Crc32;
-use fs_atomic_versions::initialize;
-use std::fs::File;
-#[cfg(target_family = "unix")]
-use std::fs::Permissions;
-#[cfg(target_family = "unix")]
-use std::os::unix::fs::PermissionsExt;
 
-use std::{path::PathBuf, time::SystemTime};
-use uuid::Uuid;
+use super::*;
+use crate::{index::IndexedResource, utils::load_or_build_index};
 
-const FILE_SIZE_1: u64 = 10;
-const FILE_SIZE_2: u64 = 11;
+/// A helper function to get [`IndexedResource`] from a file path
+fn get_indexed_resource_from_file<P: AsRef<Path>>(
+    path: P,
+    parent_dir: P,
+) -> Result<IndexedResource<Crc32>> {
+    let id = Crc32::from_path(&path)?;
 
-const FILE_NAME_1: &str = "test1.txt";
-const FILE_NAME_2: &str = "test2.txt";
-const FILE_NAME_3: &str = "test3.txt";
+    let relative_path = path
+        .as_ref()
+        .strip_prefix(parent_dir)
+        .map_err(|_| anyhow!("Failed to get relative path"))?;
 
-const CRC32_1: Crc32 = Crc32(3817498742);
-const CRC32_2: Crc32 = Crc32(1804055020);
-
-fn get_temp_dir() -> PathBuf {
-    create_dir_at(std::env::temp_dir())
-}
-
-fn create_dir_at(path: PathBuf) -> PathBuf {
-    let mut dir_path = path.clone();
-    dir_path.push(Uuid::new_v4().to_string());
-    std::fs::create_dir(&dir_path).expect("Could not create temp dir");
-    dir_path
-}
-
-fn create_file_at(
-    path: PathBuf,
-    size: Option<u64>,
-    name: Option<&str>,
-) -> (File, PathBuf) {
-    let mut file_path = path.clone();
-    if let Some(file_name) = name {
-        file_path.push(file_name);
-    } else {
-        file_path.push(Uuid::new_v4().to_string());
-    }
-    let file =
-        File::create(file_path.clone()).expect("Could not create temp file");
-    file.set_len(size.unwrap_or(0))
-        .expect("Could not set file size");
-    (file, file_path)
-}
-
-fn run_test_and_clean_up(test: impl FnOnce(PathBuf) + std::panic::UnwindSafe) {
-    initialize();
-
-    let path = get_temp_dir();
-    let result = std::panic::catch_unwind(|| test(path.clone()));
-    std::fs::remove_dir_all(path.clone())
-        .expect("Could not clean up after test");
-    if result.is_err() {
-        panic!("{}", result.err().map(|_| "Test panicked").unwrap())
-    }
-    assert!(result.is_ok());
-}
-
-// resource index build
-
-#[test]
-fn index_build_should_process_1_file_successfully() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(FILE_SIZE_1), None);
-
-        let actual: ResourceIndex<Crc32> = ResourceIndex::build(path.clone());
-
-        assert_eq!(actual.root, path.clone());
-        assert_eq!(actual.path2id.len(), 1);
-        assert_eq!(actual.id2path.len(), 1);
-        assert!(actual.id2path.contains_key(&CRC32_1));
-        assert_eq!(actual.collisions.len(), 0);
-        assert_eq!(actual.size(), 1);
+    Ok(IndexedResource {
+        id: id,
+        path: relative_path.into(),
+        last_modified: fs::metadata(&path)?.modified()?,
     })
 }
 
-#[test]
-fn index_build_should_process_colliding_files_correctly() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(FILE_SIZE_1), None);
-        create_file_at(path.clone(), Some(FILE_SIZE_1), None);
-
-        let actual: ResourceIndex<Crc32> = ResourceIndex::build(path.clone());
-
-        assert_eq!(actual.root, path.clone());
-        assert_eq!(actual.path2id.len(), 2);
-        assert_eq!(actual.id2path.len(), 1);
-        assert!(actual.id2path.contains_key(&CRC32_1));
-        assert_eq!(actual.collisions.len(), 1);
-        assert_eq!(actual.size(), 2);
-    })
-}
-
-// resource index update
-
-#[test]
-fn update_all_should_handle_renamed_file_correctly() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(FILE_SIZE_1), Some(FILE_NAME_1));
-        create_file_at(path.clone(), Some(FILE_SIZE_2), Some(FILE_NAME_2));
-
-        let mut actual: ResourceIndex<Crc32> =
-            ResourceIndex::build(path.clone());
-
-        assert_eq!(actual.collisions.len(), 0);
-        assert_eq!(actual.size(), 2);
-
-        // rename test2.txt to test3.txt
-        let mut name_from = path.clone();
-        name_from.push(FILE_NAME_2);
-        let mut name_to = path.clone();
-        name_to.push(FILE_NAME_3);
-        std::fs::rename(name_from, name_to)
-            .expect("Should rename file successfully");
-
-        let update = actual
-            .update_all()
-            .expect("Should update index correctly");
-
-        assert_eq!(actual.collisions.len(), 0);
-        assert_eq!(actual.size(), 2);
-        assert_eq!(update.deleted.len(), 1);
-        assert_eq!(update.added.len(), 1);
-    })
-}
-
-#[test]
-fn update_all_should_index_new_file_successfully() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(FILE_SIZE_1), None);
-
-        let mut actual: ResourceIndex<Crc32> =
-            ResourceIndex::build(path.clone());
-
-        let (_, expected_path) =
-            create_file_at(path.clone(), Some(FILE_SIZE_2), None);
-
-        let update = actual
-            .update_all()
-            .expect("Should update index correctly");
-
-        assert_eq!(actual.root, path.clone());
-        assert_eq!(actual.path2id.len(), 2);
-        assert_eq!(actual.id2path.len(), 2);
-        assert!(actual.id2path.contains_key(&CRC32_1));
-        assert!(actual.id2path.contains_key(&CRC32_2));
-        assert_eq!(actual.collisions.len(), 0);
-        assert_eq!(actual.size(), 2);
-        assert_eq!(update.deleted.len(), 0);
-        assert_eq!(update.added.len(), 1);
-
-        let added_key = CanonicalPathBuf::canonicalize(expected_path.clone())
-            .expect("CanonicalPathBuf should be fine");
-        assert_eq!(
-            update
-                .added
-                .get(&added_key)
-                .expect("Key exists")
-                .clone(),
-            CRC32_2
-        )
-    })
-}
-
-#[test]
-fn index_new_should_index_new_file_successfully() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(FILE_SIZE_1), None);
-        let mut index: ResourceIndex<Crc32> =
-            ResourceIndex::build(path.clone());
-
-        let (_, new_path) =
-            create_file_at(path.clone(), Some(FILE_SIZE_2), None);
-
-        let update = index
-            .index_new(&new_path)
-            .expect("Should update index correctly");
-
-        assert_eq!(index.root, path.clone());
-        assert_eq!(index.path2id.len(), 2);
-        assert_eq!(index.id2path.len(), 2);
-        assert!(index.id2path.contains_key(&CRC32_1));
-        assert!(index.id2path.contains_key(&CRC32_2));
-        assert_eq!(index.collisions.len(), 0);
-        assert_eq!(index.size(), 2);
-        assert_eq!(update.deleted.len(), 0);
-        assert_eq!(update.added.len(), 1);
-
-        let added_key = CanonicalPathBuf::canonicalize(new_path.clone())
-            .expect("CanonicalPathBuf should be fine");
-        assert_eq!(
-            update
-                .added
-                .get(&added_key)
-                .expect("Key exists")
-                .clone(),
-            CRC32_2
-        )
-    })
-}
-
-#[test]
-fn update_one_should_error_on_new_file() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(FILE_SIZE_1), None);
-        let mut index = ResourceIndex::build(path.clone());
-
-        let (_, new_path) =
-            create_file_at(path.clone(), Some(FILE_SIZE_2), None);
-
-        let update = index.update_one(&new_path, CRC32_2);
-
-        assert!(update.is_err())
-    })
-}
-
-#[test]
-fn update_one_should_index_delete_file_successfully() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(FILE_SIZE_1), Some(FILE_NAME_1));
-
-        let mut actual = ResourceIndex::build(path.clone());
-
-        let mut file_path = path.clone();
-        file_path.push(FILE_NAME_1);
-        std::fs::remove_file(file_path.clone())
-            .expect("Should remove file successfully");
-
-        let update = actual
-            .update_one(&file_path.clone(), CRC32_1)
-            .expect("Should update index successfully");
-
-        assert_eq!(actual.root, path.clone());
-        assert_eq!(actual.path2id.len(), 0);
-        assert_eq!(actual.id2path.len(), 0);
-        assert_eq!(actual.collisions.len(), 0);
-        assert_eq!(actual.size(), 0);
-        assert_eq!(update.deleted.len(), 1);
-        assert_eq!(update.added.len(), 0);
-
-        assert!(update.deleted.contains(&CRC32_1))
-    })
-}
-
-#[test]
-fn update_all_should_error_on_files_without_permissions() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(FILE_SIZE_1), Some(FILE_NAME_1));
-        let (file, _) =
-            create_file_at(path.clone(), Some(FILE_SIZE_2), Some(FILE_NAME_2));
-
-        let mut actual: ResourceIndex<Crc32> =
-            ResourceIndex::build(path.clone());
-
-        assert_eq!(actual.collisions.len(), 0);
-        assert_eq!(actual.size(), 2);
-        #[cfg(target_family = "unix")]
-        file.set_permissions(Permissions::from_mode(0o222))
-            .expect("Should be fine");
-
-        let update = actual
-            .update_all()
-            .expect("Should update index correctly");
-
-        assert_eq!(actual.collisions.len(), 0);
-        assert_eq!(actual.size(), 2);
-        assert_eq!(update.deleted.len(), 0);
-        assert_eq!(update.added.len(), 0);
-    })
-}
-
-// error cases
-
-#[test]
-fn update_one_should_not_update_absent_path() {
-    run_test_and_clean_up(|path| {
-        let mut missing_path = path.clone();
-        missing_path.push("missing/directory");
-        let mut actual = ResourceIndex::build(path.clone());
-        let old_id = Crc32(2);
-        let result = actual
-            .update_one(&missing_path, old_id.clone())
-            .map(|i| i.deleted.clone().take(&old_id))
-            .ok()
-            .flatten();
-
-        assert_eq!(result, Some(Crc32(2)));
-    })
-}
-
-#[test]
-fn update_one_should_index_new_path() {
-    run_test_and_clean_up(|path| {
-        let mut missing_path = path.clone();
-        missing_path.push("missing/directory");
-        let mut actual = ResourceIndex::build(path.clone());
-        let old_id = Crc32(2);
-        let result = actual
-            .update_one(&missing_path, old_id.clone())
-            .map(|i| i.deleted.clone().take(&old_id))
-            .ok()
-            .flatten();
-
-        assert_eq!(result, Some(Crc32(2)));
-    })
-}
-
-#[test]
-fn should_not_index_empty_file() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(0), None);
-        let actual: ResourceIndex<Crc32> = ResourceIndex::build(path.clone());
-
-        assert_eq!(actual.root, path.clone());
-        assert_eq!(actual.path2id.len(), 0);
-        assert_eq!(actual.id2path.len(), 0);
-        assert_eq!(actual.collisions.len(), 0);
-    })
-}
-
-#[test]
-fn should_not_index_hidden_file() {
-    run_test_and_clean_up(|path| {
-        create_file_at(path.clone(), Some(FILE_SIZE_1), Some(".hidden"));
-        let actual: ResourceIndex<Crc32> = ResourceIndex::build(path.clone());
-
-        assert_eq!(actual.root, path.clone());
-        assert_eq!(actual.path2id.len(), 0);
-        assert_eq!(actual.id2path.len(), 0);
-        assert_eq!(actual.collisions.len(), 0);
-    })
-}
-
-#[test]
-fn should_not_index_1_empty_directory() {
-    run_test_and_clean_up(|path| {
-        create_dir_at(path.clone());
-
-        let actual: ResourceIndex<Crc32> = ResourceIndex::build(path.clone());
-
-        assert_eq!(actual.root, path.clone());
-        assert_eq!(actual.path2id.len(), 0);
-        assert_eq!(actual.id2path.len(), 0);
-        assert_eq!(actual.collisions.len(), 0);
-    })
-}
-
-#[test]
-fn discover_paths_should_not_walk_on_invalid_path() {
-    run_test_and_clean_up(|path| {
-        let mut missing_path = path.clone();
-        missing_path.push("missing/directory");
-        let actual = discover_paths(missing_path);
-        assert_eq!(actual.len(), 0);
-    })
-}
-
-#[test]
-fn index_entry_order() {
-    let old1 = IndexEntry {
-        id: Crc32(2),
-        modified: SystemTime::UNIX_EPOCH,
-    };
-    let old2 = IndexEntry {
-        id: Crc32(1),
-        modified: SystemTime::UNIX_EPOCH,
-    };
-
-    let new1 = IndexEntry {
-        id: Crc32(1),
-        modified: SystemTime::now(),
-    };
-    let new2 = IndexEntry {
-        id: Crc32(2),
-        modified: SystemTime::now(),
-    };
-
-    assert_eq!(new1, new1);
-    assert_eq!(new2, new2);
-    assert_eq!(old1, old1);
-    assert_eq!(old2, old2);
-
-    assert_ne!(new1, new2);
-    assert_ne!(new1, old1);
-
-    assert!(new1 > old1);
-    assert!(new1 > old2);
-    assert!(new2 > old1);
-    assert!(new2 > old2);
-    assert!(new2 > new1);
-}
-
-/// Test the performance of `ResourceIndex::build` on a specific directory.
+/// Test storing and loading the resource index.
 ///
-/// This test evaluates the performance of building a resource
-/// index using the `ResourceIndex::build` method on a given directory.
-/// It measures the time taken to build the resource index and prints the
-/// number of collisions detected.
+/// ## Test scenario:
+/// - Build a resource index in the temporary directory.
+/// - Store the index.
+/// - Load the stored index.
+/// - Assert that the loaded index matches the original index.
 #[test]
-fn test_build_resource_index() {
-    use std::time::Instant;
+fn test_store_and_load_index() {
+    let temp_dir = TempDir::with_prefix("ark_test_store_and_load_index")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
 
-    let path = "../test-assets/"; // The path to the directory to index
-    assert!(
-        std::path::Path::new(path).is_dir(),
-        "The provided path is not a directory or does not exist"
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    assert_eq!(index.len(), 1);
+    index.store().expect("Failed to store index");
+
+    let loaded_index =
+        load_or_build_index(root_path, false).expect("Failed to load index");
+
+    assert_eq!(index, loaded_index);
+}
+
+/// Test storing and loading the resource index with collisions.
+///
+/// ## Test scenario:
+/// - Build a resource index in the temporary directory.
+/// - Write duplicate files with the same content.
+/// - Store the index.
+/// - Load the stored index.
+/// - Assert that the loaded index matches the original index.
+#[test]
+fn test_store_and_load_index_with_collisions() {
+    let temp_dir =
+        TempDir::with_prefix("ark_test_store_and_load_index_with_collisions")
+            .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let file_path2 = root_path.join("file2.txt");
+    fs::write(&file_path2, "file content").expect("Failed to write to file");
+
+    let file_path3 = root_path.join("file3.txt");
+    fs::write(&file_path3, "file content").expect("Failed to write to file");
+
+    let file_path4 = root_path.join("file4.txt");
+    fs::write(&file_path4, "file content").expect("Failed to write to file");
+
+    // Now we have 4 files with the same content (same checksum)
+
+    let index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    let checksum =
+        Crc32::from_path(&file_path).expect("Failed to get checksum");
+    assert_eq!(index.len(), 4);
+    assert_eq!(index.collisions().len(), 1);
+    assert_eq!(index.collisions()[&checksum].len(), 4);
+    index.store().expect("Failed to store index");
+
+    let loaded_index =
+        load_or_build_index(root_path, false).expect("Failed to load index");
+
+    assert_eq!(index, loaded_index);
+}
+
+/// Test building an index with a file.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index contains one entry.
+/// - Assert that the resource retrieved by path matches the expected resource.
+/// - Assert that the resource retrieved by ID matches the expected resource.
+#[test]
+fn test_build_index_with_file() {
+    let temp_dir = TempDir::with_prefix("ark_test_build_index_with_file")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+    let expected_resource =
+        get_indexed_resource_from_file(&file_path, &root_path.to_path_buf())
+            .expect("Failed to get indexed resource");
+
+    let index = ResourceIndex::build(root_path).expect("Failed to build index");
+    assert_eq!(index.len(), 1);
+
+    let resource = index
+        .get_resource_by_path("file.txt")
+        .expect("Failed to get resource");
+    assert_eq!(resource, &expected_resource);
+}
+
+/// Test building an index with a directory.
+///
+/// ## Test scenario:
+/// - Create a subdirectory within the temporary directory.
+/// - Create a file within the subdirectory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index contains one entry.
+/// - Assert that the resource retrieved by path matches the expected resource.
+/// - Assert that the resource retrieved by ID matches the expected resource.
+#[test]
+fn test_build_index_with_directory() {
+    let temp_dir = TempDir::with_prefix("ark_test_build_index_with_directory")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let dir_path = root_path.join("dir");
+    fs::create_dir(&dir_path).expect("Failed to create dir");
+    let file_path = dir_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+    let expected_resource =
+        get_indexed_resource_from_file(&file_path, &root_path.to_path_buf())
+            .expect("Failed to get indexed resource");
+
+    let index = ResourceIndex::build(root_path).expect("Failed to build index");
+    assert_eq!(index.len(), 1);
+
+    let resource = index
+        .get_resource_by_path("dir/file.txt")
+        .expect("Failed to get resource");
+    assert_eq!(resource, &expected_resource);
+}
+
+/// Test building an index with multiple files.
+///
+/// ## Test scenario:
+/// - Create multiple files within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index contains two entries.
+/// - Assert that the resource retrieved by path for each file matches the
+///   expected resource.
+#[test]
+fn test_build_index_with_multiple_files() {
+    let temp_dir =
+        TempDir::with_prefix("ark_test_build_index_with_multiple_files")
+            .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file1_path = root_path.join("file1.txt");
+    fs::write(&file1_path, "file1 content").expect("Failed to write to file");
+    let file2_path = root_path.join("file2.txt");
+    fs::write(&file2_path, "file2 content").expect("Failed to write to file");
+
+    let expected_resource1 =
+        get_indexed_resource_from_file(&file1_path, &root_path.to_path_buf())
+            .expect("Failed to get indexed resource");
+    let expected_resource2 =
+        get_indexed_resource_from_file(&file2_path, &root_path.to_path_buf())
+            .expect("Failed to get indexed resource");
+
+    let index = ResourceIndex::build(root_path).expect("Failed to build index");
+    assert_eq!(index.len(), 2);
+
+    let resource = index
+        .get_resource_by_path("file1.txt")
+        .expect("Failed to get resource");
+    assert_eq!(resource, &expected_resource1);
+
+    let resource = index
+        .get_resource_by_path("file2.txt")
+        .expect("Failed to get resource");
+    assert_eq!(resource, &expected_resource2);
+}
+
+/// Test building an index with multiple directories.
+///
+/// ## Test scenario:
+/// - Create multiple directories within the temporary directory, each
+///   containing a file.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index contains two entries.
+/// - Assert that the resources retrieved by path for each file match the
+///   expected resources.
+#[test]
+fn test_build_index_with_multiple_directories() {
+    let temp_dir =
+        TempDir::with_prefix("ark_test_build_index_with_multiple_directories")
+            .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let dir1_path = root_path.join("dir1");
+    fs::create_dir(&dir1_path).expect("Failed to create dir");
+    let file1_path = dir1_path.join("file1.txt");
+    fs::write(&file1_path, "file1 content").expect("Failed to write to file");
+
+    let dir2_path = root_path.join("dir2");
+    fs::create_dir(&dir2_path).expect("Failed to create dir");
+    let file2_path = dir2_path.join("file2.txt");
+    fs::write(&file2_path, "file2 content").expect("Failed to write to file");
+
+    let expected_resource1 =
+        get_indexed_resource_from_file(&file1_path, &root_path.to_path_buf())
+            .expect("Failed to get indexed resource");
+    let expected_resource2 =
+        get_indexed_resource_from_file(&file2_path, &root_path.to_path_buf())
+            .expect("Failed to get indexed resource");
+
+    let index = ResourceIndex::build(root_path).expect("Failed to build index");
+    assert_eq!(index.len(), 2);
+
+    let resource = index
+        .get_resource_by_path("dir1/file1.txt")
+        .expect("Resource not found");
+    assert_eq!(resource, &expected_resource1);
+
+    let resource = index
+        .get_resource_by_path("dir2/file2.txt")
+        .expect("Resource not found");
+    assert_eq!(resource, &expected_resource2);
+}
+
+/// Test tracking the removal of a file from the index.
+///
+/// ## Test scenario:
+/// - Create two files within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index contains two entries.
+/// - Remove one of the files.
+/// - Track the removal of the file in the index.
+/// - Assert that the index contains only one entry after removal.
+/// - Assert that the removed file is no longer present in the index, while the
+///   other file remains.
+#[test]
+fn test_track_removal() {
+    let temp_dir = TempDir::with_prefix("ark_test_track_removal")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+    let image_path = root_path.join("image.png");
+    fs::write(&image_path, "image content").expect("Failed to write to file");
+
+    let mut index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 2);
+
+    fs::remove_file(&file_path).expect("Failed to remove file");
+
+    let file_relative_path = file_path
+        .strip_prefix(root_path)
+        .expect("Failed to get relative path");
+    index
+        .track_removal(&file_relative_path)
+        .expect("Failed to track removal");
+
+    assert_eq!(index.len(), 1);
+    assert!(index.get_resource_by_path("file.txt").is_none());
+    assert!(index.get_resource_by_path("image.png").is_some());
+}
+
+/// Test tracking the removal of a file that doesn't exist.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index contains only one entry.
+/// - Track the removal of a file that doesn't exist in the index.
+/// - Assert that the index still contains only one entry.
+#[test]
+fn test_track_removal_non_existent() {
+    let temp_dir = TempDir::with_prefix("ark_test_track_removal_non_existent")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let mut index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 1);
+
+    let new_file_path = root_path.join("new_file.txt");
+
+    let new_file_relative_path = new_file_path
+        .strip_prefix(root_path)
+        .expect("Failed to get relative path");
+    let removal_result = index.track_removal(&new_file_relative_path);
+    assert!(removal_result.is_err());
+    assert_eq!(index.len(), 1);
+}
+
+/// Test tracking the addition of a new file to the index.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index initially contains only one entry.
+/// - Create a new file in the temporary directory.
+/// - Track the addition of the new file in the index.
+/// - Assert that the index contains two entries after addition.
+/// - Assert that both files are present in the index.
+#[test]
+fn test_track_addition() {
+    let temp_dir = TempDir::with_prefix("ark_test_track_addition")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let mut index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 1);
+
+    let new_file_path = root_path.join("new_file.txt");
+    fs::write(&new_file_path, "new file content")
+        .expect("Failed to write to file");
+
+    let new_file_relative_path = new_file_path
+        .strip_prefix(root_path)
+        .expect("Failed to get relative path");
+    index
+        .track_addition(&new_file_relative_path)
+        .expect("Failed to track addition");
+
+    assert_eq!(index.len(), 2);
+    assert!(index.get_resource_by_path("file.txt").is_some());
+    assert!(index
+        .get_resource_by_path("new_file.txt")
+        .is_some());
+}
+
+/// Test for tracking addition of a file that doesn't exist
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index initially contains only one entry.
+/// - Track the addition of a file that doesn't exist in the index.
+/// - Assert that the index still contains only one entry.
+#[test]
+fn test_track_addition_non_existent() {
+    let temp_dir = TempDir::with_prefix("ark_test_track_addition_non_existent")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let mut index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 1);
+
+    let new_file_path = root_path.join("new_file.txt");
+
+    let new_file_relative_path = new_file_path
+        .strip_prefix(root_path)
+        .expect("Failed to get relative path");
+    let addition_result = index.track_addition(&new_file_relative_path);
+    assert!(addition_result.is_err());
+    assert_eq!(index.len(), 1);
+}
+
+/// Test tracking the modification of a file in the index.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index initially contains only one entry.
+/// - Update the content of the file.
+/// - Track the modification of the file in the index.
+/// - Assert that the index still contains only one entry.
+/// - Assert that the modification timestamp of the file in the index matches
+///   the actual file's modification timestamp.
+#[test]
+fn test_track_modification() {
+    let temp_dir = TempDir::with_prefix("ark_test_track_modification")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let mut index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 1);
+
+    fs::write(&file_path, "updated file content")
+        .expect("Failed to write to file");
+
+    let file_relative_path = file_path
+        .strip_prefix(root_path)
+        .expect("Failed to get relative path");
+    index
+        .track_modification(&file_relative_path)
+        .expect("Failed to track modification");
+
+    assert_eq!(index.len(), 1);
+    let resource = index
+        .get_resource_by_path("file.txt")
+        .expect("Resource not found");
+    assert_eq!(
+        resource.last_modified,
+        fs::metadata(&file_path)
+            .unwrap()
+            .modified()
+            .unwrap()
     );
+}
 
-    let start_time = Instant::now();
-    let index: ResourceIndex<Crc32> = ResourceIndex::build(path.to_string());
-    let elapsed_time = start_time.elapsed();
+/// Test that track modification does not add a new file to the index.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index initially contains only one entry.
+/// - Create a new file in the temporary directory.
+/// - Track the modification of the new file in the index.
+/// - Assert that the index still contains only one entry.
+#[test]
+fn test_track_modification_does_not_add() {
+    let temp_dir =
+        TempDir::with_prefix("ark_test_track_modification_does_not_add")
+            .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
 
-    println!("Number of paths: {}", index.id2path.len());
-    println!("Number of resources: {}", index.id2path.len());
-    println!("Number of collisions: {}", index.collisions.len());
-    println!("Time taken: {:?}", elapsed_time);
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let mut index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 1);
+
+    let new_file_path = root_path.join("new_file.txt");
+    fs::write(&new_file_path, "new file content")
+        .expect("Failed to write to file");
+
+    let new_file_relative_path = new_file_path
+        .strip_prefix(root_path)
+        .expect("Failed to get relative path");
+
+    let modification_result = index.track_modification(&new_file_relative_path);
+    assert!(modification_result.is_err());
+}
+
+/// Test updating the resource index.
+///
+/// ## Test scenario:
+/// - Create files within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index initially contains the expected number of entries.
+/// - Create a new file, modify an existing file, and remove another file.
+/// - Update the resource index.
+/// - Assert that the index contains the expected number of entries after the
+///   update.
+/// - Assert that the entries in the index match the expected state after the
+///   update.
+#[test]
+fn test_resource_index_update() {
+    let temp_dir = TempDir::with_prefix("ark_test_resource_index_update")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let image_path = root_path.join("image.png");
+    fs::write(&image_path, "image content").expect("Failed to write to file");
+
+    let mut index =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 2);
+
+    // create new file
+    let new_file_path = root_path.join("new_file.txt");
+    fs::write(&new_file_path, "new file content")
+        .expect("Failed to write to file");
+
+    // modify file
+    fs::write(&file_path, "updated file content")
+        .expect("Failed to write to file");
+
+    // remove file
+    fs::remove_file(&image_path).expect("Failed to remove file");
+
+    index
+        .update_all()
+        .expect("Failed to update index");
+    // Index now contains 2 resources (file.txt and new_file.txt)
+    assert_eq!(index.len(), 2);
+
+    let resource = index
+        .get_resource_by_path("file.txt")
+        .expect("Resource not found");
+    let expected_resource =
+        get_indexed_resource_from_file(&file_path, &root_path.to_path_buf())
+            .expect("Failed to get indexed resource");
+    assert_eq!(resource, &expected_resource);
+
+    let _resource = index
+        .get_resource_by_path("new_file.txt")
+        .expect("Resource not found");
+
+    assert!(index.get_resource_by_path("image.png").is_none());
+}
+
+/// Test adding colliding files to the index.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index initially contains the expected number of entries.
+/// - Create a new file with the same checksum as the existing file.
+/// - Track the addition of the new file in the index.
+/// - Assert that the index contains the expected number of entries after the
+///   addition.
+/// - Assert index.collisions contains the expected number of entries.
+#[test]
+fn test_add_colliding_files() {
+    let temp_dir = TempDir::with_prefix("ark_test_add_colliding_files")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let mut index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 1);
+
+    let new_file_path = root_path.join("new_file.txt");
+    fs::write(&new_file_path, "file content").expect("Failed to write to file");
+
+    let new_file_relative_path = new_file_path
+        .strip_prefix(root_path)
+        .expect("Failed to get relative path");
+    index
+        .track_addition(&new_file_relative_path)
+        .expect("Failed to track addition");
+
+    assert_eq!(index.len(), 2);
+    assert_eq!(index.collisions().len(), 1);
+}
+
+/// Test that we don't index hidden files.
+///
+/// ## Test scenario:
+/// - Create a hidden file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index initially contains the expected number of entries.
+///   (0)
+#[test]
+fn test_hidden_files() {
+    let temp_dir = TempDir::with_prefix("ark_test_hidden_files")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join(".hidden_file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 0);
 }
