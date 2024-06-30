@@ -47,8 +47,9 @@ fn resource_index_benchmark(c: &mut Criterion) {
 
     // Benchmark `ResourceIndex::update_all()`
 
-    // First, create a new temp directory specifically for the update_all benchmark
-    // since we will be creating new files, removing files, and modifying files
+    // First, create a new temp directory specifically for the update_all
+    // benchmark since we will be creating new files, removing files, and
+    // modifying files
     let update_all_benchmarks_dir =
         TempDir::with_prefix("ark-fs-index-benchmarks-update-all").unwrap();
     let update_all_benchmarks_dir = update_all_benchmarks_dir.path();
@@ -85,7 +86,8 @@ criterion_group! {
 }
 criterion_main!(benches);
 
-/// A helper function to setup a temp directory for the benchmarks using the test assets directory
+/// A helper function to setup a temp directory for the benchmarks using the
+/// test assets directory
 fn setup_temp_dir() -> TempDir {
     // assert the path exists and is a directory
     assert!(
@@ -119,16 +121,18 @@ fn setup_temp_dir() -> TempDir {
     temp_dir
 }
 
-/// A helper function that takes a directory and creates 50 new files, removes 30 files, and modifies 10 files
+/// A helper function that takes a directory and creates 50 new files, removes
+/// 30 files, and modifies 10 files
 ///
-/// Note: The function assumes that the directory already contains 50 files named `file_0.txt` to `file_49.txt`
+/// Note: The function assumes that the directory already contains 50 files
+/// named `file_0.txt` to `file_49.txt`
 fn update_all_files(dir: &PathBuf) {
     // Create 50 new files
     for i in 51..101 {
         let new_file = dir.join(format!("file_{}.txt", i));
         std::fs::File::create(&new_file).unwrap();
-        // We add the index `i` to the file content to make sure the content is unique
-        // This is to avoid collisions in the index
+        // We add the index `i` to the file content to make sure the content is
+        // unique This is to avoid collisions in the index
         std::fs::write(&new_file, format!("Hello, World! {}", i)).unwrap();
     }
 

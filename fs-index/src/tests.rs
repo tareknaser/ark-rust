@@ -1,5 +1,7 @@
-use crate::index::{discover_paths, IndexEntry};
-use crate::ResourceIndex;
+use crate::{
+    index::{discover_paths, IndexEntry},
+    ResourceIndex,
+};
 use canonical_path::CanonicalPathBuf;
 use dev_hash::Crc32;
 use fs_atomic_versions::initialize;
@@ -9,8 +11,7 @@ use std::fs::Permissions;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 
-use std::path::PathBuf;
-use std::time::SystemTime;
+use std::{path::PathBuf, time::SystemTime};
 use uuid::Uuid;
 
 const FILE_SIZE_1: u64 = 10;

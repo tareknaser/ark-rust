@@ -4,9 +4,11 @@ extern crate canonical_path;
 use data_error::{ArklibError, Result};
 use fs_index::ResourceIndex;
 
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::{Arc, RwLock},
+};
 
 use crate::ResourceId;
 

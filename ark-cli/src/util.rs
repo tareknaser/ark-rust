@@ -6,19 +6,21 @@ use fs_storage::{
     ARK_FOLDER, PREVIEWS_STORAGE_FOLDER, SCORE_STORAGE_FILE, STATS_FOLDER,
     TAG_STORAGE_FILE, THUMBNAILS_STORAGE_FOLDER,
 };
-use std::env::current_dir;
-use std::fs::{canonicalize, metadata};
-use std::io::BufRead;
-use std::io::BufReader;
-use std::path::Path;
-use std::str::FromStr;
-use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use std::{fs::File, path::PathBuf};
+use std::{
+    env::current_dir,
+    fs::{canonicalize, metadata, File},
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
+    str::FromStr,
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
-use crate::error::AppError;
-use crate::models::storage::{Storage, StorageType};
-use crate::ARK_CONFIG;
+use crate::{
+    error::AppError,
+    models::storage::{Storage, StorageType},
+    ARK_CONFIG,
+};
 
 pub fn discover_roots(
     roots_cfg: &Option<PathBuf>,
