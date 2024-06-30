@@ -28,22 +28,88 @@ fn resource_index_benchmark(c: &mut Criterion) {
         |b, path| {
             b.iter(|| {
                 let index: ResourceIndex<Crc32> =
-                    ResourceIndex::build(black_box(path));
-                collisions_size = index.collisions.len();
+                    ResourceIndex::build(black_box(path)).unwrap();
+                collisions_size = index.collisions().len();
             });
         },
     );
     println!("Collisions: {}", collisions_size);
 
-    // TODO: Benchmark `ResourceIndex::get_resource_by_id()`
+    // Benchmark `ResourceIndex::get_resources_by_id()`
+    let index: ResourceIndex<Crc32> =
+        ResourceIndex::build(benchmarks_dir).unwrap();
+    let resources = index.resources();
+    let resource_id = &resources.clone()[0].id;
+    group.bench_function("index_get_resource_by_id", |b| {
+        b.iter(|| {
+            let _resource =
+                index.get_resources_by_id(black_box(resource_id.clone()));
+        });
+    });
 
-    // TODO: Benchmark `ResourceIndex::get_resource_by_path()`
+    // Benchmark `ResourceIndex::get_resource_by_path()`
+    let resource_path = &resources.clone()[0].path;
+    group.bench_function("index_get_resource_by_path", |b| {
+        b.iter(|| {
+            let _resource =
+                index.get_resource_by_path(black_box(resource_path.clone()));
+        });
+    });
 
-    // TODO: Benchmark `ResourceIndex::track_addition()`
+    // Benchmark `ResourceIndex::track_addition()`
+    let new_file = benchmarks_dir.join("new_file.txt");
+    group.bench_function("index_track_addition", |b| {
+        b.iter(|| {
+            std::fs::File::create(&new_file).unwrap();
+            std::fs::write(&new_file, "Hello, World!").unwrap();
+            let mut index: ResourceIndex<Crc32> =
+                ResourceIndex::build(black_box(benchmarks_dir)).unwrap();
+            let _addition_result = index.track_addition(&new_file).unwrap();
 
-    // TODO: Benchmark `ResourceIndex::track_deletion()`
+            // Cleanup
+            std::fs::remove_file(&new_file).unwrap();
+        });
+    });
 
-    // TODO: Benchmark `ResourceIndex::track_update()`
+    // Benchmark `ResourceIndex::track_removal()`
+    let removed_file = benchmarks_dir.join("new_file.txt");
+    group.bench_function("index_track_removal", |b| {
+        b.iter(|| {
+            std::fs::File::create(&removed_file).unwrap();
+            std::fs::write(&removed_file, "Hello, World!").unwrap();
+            let mut index: ResourceIndex<Crc32> =
+                ResourceIndex::build(black_box(benchmarks_dir)).unwrap();
+            std::fs::remove_file(&removed_file).unwrap();
+            let relative_path = removed_file
+                .strip_prefix(benchmarks_dir)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            let _removal_result = index.track_removal(&relative_path).unwrap();
+        });
+    });
+
+    // Benchmark `ResourceIndex::track_modification()`
+    let modified_file = benchmarks_dir.join("new_file.txt");
+    group.bench_function("index_track_modification", |b| {
+        b.iter(|| {
+            std::fs::File::create(&modified_file).unwrap();
+            std::fs::write(&modified_file, "Hello, World!").unwrap();
+            let mut index: ResourceIndex<Crc32> =
+                ResourceIndex::build(black_box(benchmarks_dir)).unwrap();
+            std::fs::write(&modified_file, "Hello, World! Modified").unwrap();
+            let relative_path = modified_file
+                .strip_prefix(benchmarks_dir)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            let _modification_result =
+                index.track_modification(&relative_path).unwrap();
+
+            // Cleanup
+            std::fs::remove_file(&modified_file).unwrap();
+        });
+    });
 
     // Benchmark `ResourceIndex::update_all()`
 
@@ -69,7 +135,8 @@ fn resource_index_benchmark(c: &mut Criterion) {
                     .unwrap();
             }
             let mut index: ResourceIndex<Crc32> =
-                ResourceIndex::build(black_box(&update_all_benchmarks_dir));
+                ResourceIndex::build(black_box(&update_all_benchmarks_dir))
+                    .unwrap();
 
             update_all_files(&update_all_benchmarks_dir.to_path_buf());
             let _update_result = index.update_all().unwrap();
