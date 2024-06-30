@@ -12,9 +12,8 @@ bench = false
 log = { version = "0.4.17", features = ["release_max_level_off"] }
 walkdir = "2.3.2"
 anyhow = "1.0.58"
-canonical-path = "2.0.2"
-pathdiff = "0.2.1"
-itertools = "0.10.5"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 
 
 fs-storage = { path = "../fs-storage" }
@@ -29,7 +28,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.10"
 # Depending on `dev-hash` for testing
 dev-hash = { path = "../dev-hash" }
-fs-atomic-versions = { path = "../fs-atomic-versions" }
 
 [[bench]]
 name = "resource_index_benchmark"
