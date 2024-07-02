@@ -23,11 +23,37 @@ use crate::utils::should_index;
 )]
 pub struct IndexedResource<Id> {
     /// The unique identifier of the resource
-    pub id: Id,
+    id: Id,
     /// The path of the resource, relative to the root path
-    pub path: PathBuf,
+    path: PathBuf,
     /// The last modified time of the resource (from the file system metadata)
-    pub last_modified: SystemTime,
+    last_modified: SystemTime,
+}
+
+impl<Id> IndexedResource<Id> {
+    /// Create a new indexed resource
+    pub fn new(id: Id, path: PathBuf, last_modified: SystemTime) -> Self {
+        IndexedResource {
+            id,
+            path,
+            last_modified,
+        }
+    }
+
+    /// Return the ID of the resource
+    pub fn id(&self) -> &Id {
+        &self.id
+    }
+
+    /// Return the path of the resource
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Return the last modified time of the resource
+    pub fn last_modified(&self) -> SystemTime {
+        self.last_modified
+    }
 }
 
 /// Represents the index of resources in a directory.

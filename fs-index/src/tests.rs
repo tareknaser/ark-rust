@@ -21,11 +21,11 @@ fn get_indexed_resource_from_file<P: AsRef<Path>>(
         .strip_prefix(parent_dir)
         .map_err(|_| anyhow!("Failed to get relative path"))?;
 
-    Ok(IndexedResource {
-        id: id,
-        path: relative_path.into(),
-        last_modified: fs::metadata(&path)?.modified()?,
-    })
+    Ok(IndexedResource::new(
+        id,
+        relative_path.to_path_buf(),
+        fs::metadata(path)?.modified()?,
+    ))
 }
 
 /// Test storing and loading the resource index.
@@ -492,7 +492,7 @@ fn test_track_modification() {
         .get_resource_by_path("file.txt")
         .expect("Resource not found");
     assert_eq!(
-        resource.last_modified,
+        resource.last_modified(),
         fs::metadata(&file_path)
             .unwrap()
             .modified()

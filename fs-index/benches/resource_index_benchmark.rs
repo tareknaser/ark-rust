@@ -39,7 +39,7 @@ fn resource_index_benchmark(c: &mut Criterion) {
     let index: ResourceIndex<Crc32> =
         ResourceIndex::build(benchmarks_dir).unwrap();
     let resources = index.resources();
-    let resource_id = &resources.clone()[0].id;
+    let resource_id = resources[0].id();
     group.bench_function("index_get_resource_by_id", |b| {
         b.iter(|| {
             let _resource =
@@ -48,11 +48,11 @@ fn resource_index_benchmark(c: &mut Criterion) {
     });
 
     // Benchmark `ResourceIndex::get_resource_by_path()`
-    let resource_path = &resources.clone()[0].path;
+    let resource_path = resources[0].path();
     group.bench_function("index_get_resource_by_path", |b| {
         b.iter(|| {
             let _resource =
-                index.get_resource_by_path(black_box(resource_path.clone()));
+                index.get_resource_by_path(black_box(resource_path));
         });
     });
 
