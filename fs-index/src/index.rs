@@ -215,6 +215,10 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             }
             let path = entry.path();
             let metadata = fs::metadata(path)?;
+            // Ignore empty files
+            if metadata.len() == 0 {
+                continue;
+            }
             let last_modified = metadata.modified()?;
             let id = Id::from_path(path)?;
             // Path is relative to the root
@@ -316,6 +320,14 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             .into());
         }
         let metadata = fs::metadata(&full_path)?;
+        // return an error if the file is empty
+        if metadata.len() == 0 {
+            return Err(ArklibError::Path(format!(
+                "File is empty: {:?}",
+                full_path
+            ))
+            .into());
+        }
         let last_modified = metadata.modified()?;
         let id = Id::from_path(&full_path)?;
 
