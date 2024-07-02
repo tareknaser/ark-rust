@@ -113,14 +113,14 @@ pub fn monitor_index(
                             let duration = start.elapsed();
                             println!("Updating succeeded in {:?}\n", duration);
 
-                            if !diff.removed.is_empty() {
-                                println!("Deleted: {:?}", diff.removed);
+                            if !diff.removed().is_empty() {
+                                println!("Deleted: {:?}", diff.removed());
                             }
-                            if !diff.added.is_empty() {
-                                println!("Added: {:?}", diff.added);
+                            if !diff.added().is_empty() {
+                                println!("Added: {:?}", diff.added());
                             }
-                            if !diff.modified.is_empty() {
-                                println!("Modified: {:?}", diff.modified);
+                            if !diff.modified().is_empty() {
+                                println!("Modified: {:?}", diff.modified());
                             }
                         }
                     }
