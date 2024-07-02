@@ -128,6 +128,30 @@ fn test_build_index_with_file() {
     assert_eq!(resource, &expected_resource);
 }
 
+/// Test building an index with an empty file.
+///
+/// ## Test scenario:
+/// - Create an empty file within the temporary directory.
+/// - Create a file with content within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index contains one entries.
+#[test]
+fn test_build_index_with_empty_file() {
+    let temp_dir = TempDir::with_prefix("ark_test_build_index_with_empty_file")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let empty_file_path = root_path.join("empty_file.txt");
+    fs::write(&empty_file_path, "").expect("Failed to write to file");
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    assert_eq!(index.len(), 1);
+}
+
 /// Test building an index with a directory.
 ///
 /// ## Test scenario:
@@ -361,6 +385,39 @@ fn test_track_addition() {
     assert!(index
         .get_resource_by_path("new_file.txt")
         .is_some());
+}
+
+/// Test tracking the addition of an empty file to the index.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index initially contains only one entry.
+/// - Create a new empty file in the temporary directory.
+/// - Track the addition of the new file in the index.
+/// - Assert that it retuns an error.
+#[test]
+fn test_track_addition_empty_file() {
+    let temp_dir = TempDir::with_prefix("ark_test_track_addition_empty_file")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let mut index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 1);
+
+    let new_file_path = root_path.join("new_file.txt");
+    fs::write(&new_file_path, "").expect("Failed to write to file");
+
+    let new_file_relative_path = new_file_path
+        .strip_prefix(root_path)
+        .expect("Failed to get relative path");
+    let addition_result = index.track_addition(&new_file_relative_path);
+    assert!(addition_result.is_err());
 }
 
 /// Test for tracking addition of a file that doesn't exist
