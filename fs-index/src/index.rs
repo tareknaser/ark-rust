@@ -139,11 +139,28 @@ where
 #[derive(PartialEq, Debug)]
 pub struct IndexUpdate<Id: ResourceId> {
     /// Resources that were added during the update
-    pub added: Vec<IndexedResource<Id>>,
+    added: Vec<IndexedResource<Id>>,
     /// Resources that were modified during the update
-    pub modified: Vec<IndexedResource<Id>>,
+    modified: Vec<IndexedResource<Id>>,
     /// Resources that were removed during the update
-    pub removed: Vec<IndexedResource<Id>>,
+    removed: Vec<IndexedResource<Id>>,
+}
+
+impl<Id: ResourceId> IndexUpdate<Id> {
+    /// Return the resources that were added during the update
+    pub fn added(&self) -> &Vec<IndexedResource<Id>> {
+        &self.added
+    }
+
+    /// Return the resources that were modified during the update
+    pub fn modified(&self) -> &Vec<IndexedResource<Id>> {
+        &self.modified
+    }
+
+    /// Return the resources that were removed during the update
+    pub fn removed(&self) -> &Vec<IndexedResource<Id>> {
+        &self.removed
+    }
 }
 
 impl<Id: ResourceId> ResourceIndex<Id> {
