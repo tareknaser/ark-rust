@@ -42,9 +42,9 @@ where
 
         let mut resources = HashMap::new();
         for (path, resource) in &self.path_to_resource {
-            let id = resource.id.clone();
+            let id = resource.id().clone();
             let last_modified = resource
-                .last_modified
+                .last_modified()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .map_err(|e| {
                     serde::ser::Error::custom(format!(
@@ -83,14 +83,14 @@ where
         for (path, resource_data) in index_data.resources {
             let last_modified = SystemTime::UNIX_EPOCH
                 + std::time::Duration::from_nanos(resource_data.last_modified);
-            let resource = IndexedResource {
-                id: resource_data.id,
-                path: path.clone(),
+            let resource = IndexedResource::new(
+                resource_data.id,
+                path.clone(),
                 last_modified,
-            };
+            );
             path_to_resource.insert(path, resource.clone());
             id_to_resources
-                .entry(resource.id.clone())
+                .entry(resource.id().clone())
                 .or_insert_with(Vec::new)
                 .push(resource);
         }
@@ -115,8 +115,8 @@ where
     fn eq(&self, other: &Self) -> bool {
         let mut resources1 = self.resources();
         let mut resources2 = other.resources();
-        resources1.sort_by(|a, b| a.path.cmp(&b.path));
-        resources2.sort_by(|a, b| a.path.cmp(&b.path));
+        resources1.sort_by(|a, b| a.path().cmp(b.path()));
+        resources2.sort_by(|a, b| a.path().cmp(b.path()));
 
         resources1 == resources2 && self.root == other.root
     }

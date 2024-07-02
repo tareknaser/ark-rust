@@ -78,8 +78,8 @@ impl List {
             .resources()
             .iter()
             .filter_map(|indexed_resource| {
-                let path = indexed_resource.clone().path;
-                let id = indexed_resource.clone().id;
+                let path = indexed_resource.path();
+                let id = indexed_resource.id();
                 let tags = if self.tags {
                     Some(
                         read_storage_value(
@@ -115,7 +115,7 @@ impl List {
                 let datetime = if self.modified {
                     let format = "%b %e %H:%M %Y";
                     Some(
-                        DateTime::<Utc>::from(indexed_resource.last_modified)
+                        DateTime::<Utc>::from(indexed_resource.last_modified())
                             .format(format)
                             .to_string(),
                     )
@@ -124,9 +124,11 @@ impl List {
                 };
 
                 let (path, resource, content) = match entry_output {
-                    EntryOutput::Both => (Some(path), Some(id), None),
-                    EntryOutput::Path => (Some(path), None, None),
-                    EntryOutput::Id => (None, Some(id), None),
+                    EntryOutput::Both => {
+                        (Some(path.to_owned()), Some(id.to_owned()), None)
+                    }
+                    EntryOutput::Path => (Some(path.to_owned()), None, None),
+                    EntryOutput::Id => (None, Some(id.to_owned()), None),
                     EntryOutput::Link => match File::open(path) {
                         Ok(mut file) => {
                             let mut contents = String::new();

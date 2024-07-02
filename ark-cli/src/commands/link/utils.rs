@@ -29,7 +29,7 @@ pub fn load_link(
         let index = provide_index(root);
         index
             .get_resources_by_id(id.clone())
-            .map(|r| r[0].path.clone())
+            .map(|r| r[0].path().to_owned())
             .ok_or_else(|| {
                 AppError::IndexError(format!(
                     "Resource with id {} not found",
@@ -54,7 +54,7 @@ pub fn load_link(
             }
         }
         (Some(path), None) => Ok(path.to_path_buf()),
-        (None, Some(path)) => Ok(path),
+        (None, Some(path)) => Ok(path.to_path_buf()),
         (None, None) => Err(AppError::LinkLoadError(
             "Provide a path or id for request.".to_owned(),
         ))?,
