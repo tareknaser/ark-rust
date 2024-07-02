@@ -236,9 +236,9 @@ impl<Id: ResourceId> ResourceIndex<Id> {
     /// hash collisions or files with the same content
     pub fn get_resources_by_id(
         &self,
-        id: Id,
+        id: &Id,
     ) -> Option<&Vec<IndexedResource<Id>>> {
-        self.id_to_resources.get(&id)
+        self.id_to_resources.get(id)
     }
 
     /// Get a resource by its path
