@@ -113,11 +113,14 @@ pub fn monitor_index(
                             let duration = start.elapsed();
                             println!("Updating succeeded in {:?}\n", duration);
 
-                            if !diff.deleted.is_empty() {
-                                println!("Deleted: {:?}", diff.deleted);
+                            if !diff.removed.is_empty() {
+                                println!("Deleted: {:?}", diff.removed);
                             }
                             if !diff.added.is_empty() {
                                 println!("Added: {:?}", diff.added);
+                            }
+                            if !diff.modified.is_empty() {
+                                println!("Modified: {:?}", diff.modified);
                             }
                         }
                     }
@@ -129,10 +132,14 @@ pub fn monitor_index(
                     )
                 })?;
 
-                println!("Here are {} entries in the index", index.size());
+                println!("Here are {} entries in the index", index.len());
 
-                for (key, count) in index.collisions.iter() {
-                    println!("Id {:?} calculated {} times", key, count);
+                for (key, resources) in index.collisions().iter() {
+                    println!(
+                        "Id {:?} calculated {} times",
+                        key,
+                        resources.len()
+                    );
                 }
             }
         }
