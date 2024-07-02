@@ -27,8 +27,17 @@ pub fn load_link(
 ) -> Result<Link<ResourceId>, AppError> {
     let path_from_index = id.clone().map(|id| {
         let index = provide_index(root);
-        index.id2path[&id].as_path().to_path_buf()
+        index
+            .get_resources_by_id(id.clone())
+            .map(|r| r[0].path.clone())
+            .ok_or_else(|| {
+                AppError::IndexError(format!(
+                    "Resource with id {} not found",
+                    id
+                ))
+            })
     });
+    let path_from_index = path_from_index.transpose()?;
     let path_from_user = file_path;
 
     let path = match (path_from_user, path_from_index) {
