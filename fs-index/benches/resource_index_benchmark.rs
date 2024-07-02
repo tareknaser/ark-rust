@@ -42,8 +42,7 @@ fn resource_index_benchmark(c: &mut Criterion) {
     let resource_id = resources[0].id();
     group.bench_function("index_get_resource_by_id", |b| {
         b.iter(|| {
-            let _resource =
-                index.get_resources_by_id(black_box(resource_id.clone()));
+            let _resource = index.get_resources_by_id(black_box(resource_id));
         });
     });
 

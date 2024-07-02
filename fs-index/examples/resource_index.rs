@@ -25,11 +25,9 @@ fn main() -> Result<()> {
         "172b4bf148e858b13dde0fc6613413bcb7552e5c4e5c45195ac6c80f20eb5ff5"
             .to_string(),
     );
-    let resources = index
-        .get_resources_by_id(id.clone())
-        .ok_or_else(|| {
-            anyhow::anyhow!("Resource with id {:?} not found", id)
-        })?;
+    let resources = index.get_resources_by_id(&id).ok_or_else(|| {
+        anyhow::anyhow!("Resource with id {:?} not found", id)
+    })?;
     for resource in resources {
         println!("{:?}", resource);
     }

@@ -28,7 +28,7 @@ pub fn load_link(
     let path_from_index = id.clone().map(|id| {
         let index = provide_index(root);
         index
-            .get_resources_by_id(id.clone())
+            .get_resources_by_id(&id)
             .map(|r| r[0].path().to_owned())
             .ok_or_else(|| {
                 AppError::IndexError(format!(
