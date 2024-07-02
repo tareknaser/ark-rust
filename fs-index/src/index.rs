@@ -143,6 +143,11 @@ impl<Id: ResourceId> ResourceIndex<Id> {
     }
 
     /// Return the ID collisions
+    ///
+    /// **Note**: If you are using a cryptographic hash function, collisions
+    /// should be files with the same content. If you are using a
+    /// non-cryptographic hash function, collisions can be files with the
+    /// same content or files whose content hash to the same value.
     pub fn collisions(&self) -> HashMap<Id, Vec<IndexedResource<Id>>> {
         // Filter out IDs with only one resource
         self.id_to_resources
@@ -150,6 +155,20 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             .filter(|(_, resources)| resources.len() > 1)
             .map(|(id, resources)| (id.clone(), resources.clone()))
             .collect()
+    }
+
+    /// Return the number of ID collisions
+    ///
+    /// **Note**: If you are using a cryptographic hash function, collisions
+    /// should be files with the same content. If you are using a
+    /// non-cryptographic hash function, collisions can be files with the
+    /// same content or files whose content hash to the same value.
+    pub fn num_collisions(&self) -> usize {
+        self.id_to_resources
+            .values()
+            .filter(|resources| resources.len() > 1)
+            .map(|resources| resources.len())
+            .sum()
     }
 
     /// Save the index to the file system (as a JSON file in

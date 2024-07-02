@@ -637,6 +637,45 @@ fn test_add_colliding_files() {
     assert_eq!(index.collisions().len(), 1);
 }
 
+/// Test `ResourceIndex::num_collisions()` method.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Assert that the index initially contains the expected number of entries.
+/// - Create 2 new files with the same checksum as the existing file.
+/// - Update the index.
+/// - Assert that the index contains the expected number of entries after the
+///   update.
+#[test]
+fn test_num_collisions() {
+    let temp_dir = TempDir::with_prefix("ark_test_num_collisions")
+        .expect("Failed to create temp dir");
+    let root_path = temp_dir.path();
+
+    let file_path = root_path.join("file.txt");
+    fs::write(&file_path, "file content").expect("Failed to write to file");
+
+    let mut index: ResourceIndex<Crc32> =
+        ResourceIndex::build(root_path).expect("Failed to build index");
+    index.store().expect("Failed to store index");
+    assert_eq!(index.len(), 1);
+
+    let new_file_path = root_path.join("new_file.txt");
+    fs::write(&new_file_path, "file content").expect("Failed to write to file");
+
+    let new_file_path2 = root_path.join("new_file2.txt");
+    fs::write(&new_file_path2, "file content")
+        .expect("Failed to write to file");
+
+    index
+        .update_all()
+        .expect("Failed to update index");
+
+    assert_eq!(index.len(), 3);
+    assert_eq!(index.num_collisions(), 3);
+}
+
 /// Test that we don't index hidden files.
 ///
 /// ## Test scenario:
