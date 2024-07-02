@@ -335,8 +335,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             return Err(ArklibError::Path(format!(
                 "File does not exist: {:?}",
                 full_path
-            ))
-            .into());
+            )));
         }
         let metadata = fs::metadata(&full_path)?;
         // return an error if the file is empty
@@ -344,8 +343,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             return Err(ArklibError::Path(format!(
                 "File is empty: {:?}",
                 full_path
-            ))
-            .into());
+            )));
         }
         let last_modified = metadata.modified()?;
         let id = Id::from_path(&full_path)?;
@@ -371,7 +369,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
     ///
     /// # Arguments
     /// * `relative_path` - The path of the file to be removed (relative to the
-    ///  root path of the index).
+    ///   root path of the index).
     ///
     /// # Returns
     /// Returns `Ok(resource)` if the resource was successfully removed from the
@@ -392,8 +390,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             return Err(ArklibError::Path(format!(
                 "File still exists: {:?}",
                 full_path
-            ))
-            .into());
+            )));
         }
 
         // Remove the resource from the index
