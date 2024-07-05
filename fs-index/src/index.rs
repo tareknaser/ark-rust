@@ -310,46 +310,157 @@ impl<Id: ResourceId> ResourceIndex<Id> {
 
     /// Update the index with the latest information from the file system
     pub fn update_all(&mut self) -> Result<IndexUpdate<Id>> {
-        log::debug!("Updating index at root path: {:?}", self.root);
+        log::debug!("Updating the index");
+        log::trace!("[update] known paths: {:?}", self.path_to_resource.keys());
 
-        let mut added = Vec::new();
-        let mut modified = Vec::new();
-        let mut removed = Vec::new();
+        let curr_entries = discover_paths(self.root.clone());
 
-        let new_index = ResourceIndex::build(&self.root)?;
+        //assuming that collections manipulation is
+        // quicker than asking `path.exists()` for every path
+        let curr_paths: HashSet<PathBuf> =
+            curr_entries.keys().cloned().collect();
+        let prev_paths = self.path_to_resource.keys().cloned().collect();
+        let preserved_paths: HashSet<PathBuf> = curr_paths
+            .intersection(&prev_paths)
+            .cloned()
+            .collect();
 
-        // Compare the new index with the old index
-        let current_resources = self.resources();
-        let new_resources = new_index.resources();
-        for resource in new_resources.clone() {
-            // If the resource is in the old index,
-            // check if it has been modified
-            if let Some(current_resource) =
-                self.get_resource_by_path(&resource.path)
-            {
-                if current_resource != &resource {
-                    modified.push(resource.clone());
+        let created_paths: HashMap<PathBuf, DirEntry> = curr_entries
+            .iter()
+            .filter_map(|(path, entry)| {
+                if !preserved_paths.contains(path) {
+                    Some((path.clone(), entry.clone()))
+                } else {
+                    None
                 }
-            }
-            // If the resource is not in the old index, it has been added
-            else {
-                added.push(resource.clone());
-            }
-        }
-        for resource in current_resources {
-            // If the resource is not in the new index, it has been removed
-            if !new_resources.contains(&resource) {
-                removed.push(resource.clone());
+            })
+            .collect();
+
+        log::debug!("Checking updated paths");
+        let updated_paths: HashMap<PathBuf, DirEntry> = curr_entries
+            .into_iter()
+            .filter(|(path, dir_entry)| {
+                if !preserved_paths.contains(path) {
+                    false
+                } else {
+                    let our_entry = &self.path_to_resource[path];
+                    let prev_modified = our_entry.last_modified;
+
+                    let result = dir_entry.metadata();
+                    match result {
+                        Err(msg) => {
+                            log::error!(
+                                "Couldn't retrieve metadata for {}: {}",
+                                &path.display(),
+                                msg
+                            );
+                            false
+                        }
+                        Ok(metadata) => match metadata.modified() {
+                            Err(msg) => {
+                                log::error!(
+                                    "Couldn't retrieve timestamp for {}: {}",
+                                    &path.display(),
+                                    msg
+                                );
+                                false
+                            }
+                            Ok(curr_modified) => {
+                                let elapsed = curr_modified
+                                    .duration_since(prev_modified)
+                                    .unwrap();
+
+                                let was_updated = elapsed
+                                    >= std::time::Duration::from_millis(1);
+                                if was_updated {
+                                    log::trace!(
+                                        "[update] modified {} by path {}
+                                        \twas {:?}
+                                        \tnow {:?}
+                                        \telapsed {:?}",
+                                        our_entry.id,
+                                        path.display(),
+                                        prev_modified,
+                                        curr_modified,
+                                        elapsed
+                                    );
+                                }
+
+                                was_updated
+                            }
+                        },
+                    }
+                }
+            })
+            .collect();
+
+        let mut deleted: HashSet<Id> = HashSet::new();
+
+        let added: HashMap<PathBuf, IndexedResource<Id>> = created_paths
+            .iter()
+            .map(|(path, entry)| {
+                let id = Id::from_path(&entry.path()).unwrap();
+                let resource = IndexedResource {
+                    id: id.clone(),
+                    path: path.clone(),
+                    last_modified: entry
+                        .metadata()
+                        .unwrap()
+                        .modified()
+                        .unwrap(),
+                };
+                (path.clone(), resource)
+            })
+            .collect();
+
+        for (path, entry) in added.iter() {
+            if deleted.contains(&entry.id) {
+                // emitting the resource as both deleted and added
+                // (renaming a duplicate might remain undetected)
+                log::trace!(
+                    "[update] moved {} to path {}",
+                    entry.id,
+                    path.display()
+                );
             }
         }
 
-        // Update the index with the new index and return the result
-        *self = new_index;
-        Ok(IndexUpdate {
+        let added: Vec<IndexedResource<Id>> = added.values().cloned().collect();
+        let modified: Vec<IndexedResource<Id>> = updated_paths
+            .iter()
+            .map(|(path, entry)| {
+                let id = Id::from_path(&entry.path()).unwrap();
+                let resource = IndexedResource {
+                    id: id.clone(),
+                    path: path.clone(),
+                    last_modified: entry
+                        .metadata()
+                        .unwrap()
+                        .modified()
+                        .unwrap(),
+                };
+                resource
+            })
+            .collect();
+
+        let removed: Vec<IndexedResource<Id>> = self
+            .path_to_resource
+            .iter()
+            .filter_map(|(path, entry)| {
+                if !curr_paths.contains(path) {
+                    deleted.insert(entry.id.clone());
+                    Some(entry.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        return Ok(IndexUpdate {
             added,
             modified,
             removed,
-        })
+        });
     }
 
     /// Track the addition of a newly added file to the resource index.
@@ -498,4 +609,40 @@ impl<Id: ResourceId> ResourceIndex<Id> {
 
         Ok(new_resource)
     }
+}
+
+use std::collections::HashSet;
+use walkdir::DirEntry;
+fn discover_paths<P: AsRef<Path>>(root_path: P) -> HashMap<PathBuf, DirEntry> {
+    log::debug!(
+        "Discovering all files under path {}",
+        root_path.as_ref().display()
+    );
+
+    WalkDir::new(root_path)
+        .into_iter()
+        .filter_entry(|entry| !is_hidden(entry))
+        .filter_map(|result| match result {
+            Ok(entry) => {
+                let path = entry.path();
+                if !entry.file_type().is_dir() {
+                    Some((path.to_path_buf(), entry))
+                } else {
+                    None
+                }
+            }
+            Err(msg) => {
+                log::error!("Error during walking: {}", msg);
+                None
+            }
+        })
+        .collect()
+}
+
+fn is_hidden(entry: &DirEntry) -> bool {
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| s.starts_with('.'))
+        .unwrap_or(false)
 }
