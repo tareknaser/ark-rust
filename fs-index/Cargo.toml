@@ -33,3 +33,9 @@ dev-hash = { path = "../dev-hash" }
 name = "resource_index_benchmark"
 harness = false
 path = "benches/resource_index_benchmark.rs"
+
+
+[features]
+# This feature is only used for unit testing. It's a hack to allow
+# running the same test suite with different hash functions.
+blake3 = []
