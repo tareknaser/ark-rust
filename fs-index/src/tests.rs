@@ -4,7 +4,10 @@ use anyhow::{anyhow, Result};
 use tempfile::TempDir;
 
 use data_resource::ResourceId;
-use dev_hash::Crc32;
+#[cfg(feature = "blake3")]
+use dev_hash::Blake3 as HashType;
+#[cfg(not(feature = "blake3"))]
+use dev_hash::Crc32 as HashType;
 
 use super::*;
 use crate::{index::IndexedResource, utils::load_or_build_index};
@@ -13,8 +16,8 @@ use crate::{index::IndexedResource, utils::load_or_build_index};
 fn get_indexed_resource_from_file<P: AsRef<Path>>(
     path: P,
     parent_dir: P,
-) -> Result<IndexedResource<Crc32>> {
-    let id = Crc32::from_path(&path)?;
+) -> Result<IndexedResource<HashType>> {
+    let id = HashType::from_path(&path)?;
 
     let relative_path = path
         .as_ref()
@@ -44,7 +47,7 @@ fn test_store_and_load_index() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let index: ResourceIndex<Crc32> =
+    let index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     assert_eq!(index.len(), 1);
     index.store().expect("Failed to store index");
@@ -84,10 +87,10 @@ fn test_store_and_load_index_with_collisions() {
 
     // Now we have 4 files with the same content (same checksum)
 
-    let index: ResourceIndex<Crc32> =
+    let index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     let checksum =
-        Crc32::from_path(&file_path).expect("Failed to get checksum");
+        HashType::from_path(&file_path).expect("Failed to get checksum");
     assert_eq!(index.len(), 4);
     assert_eq!(index.collisions().len(), 1);
     assert_eq!(index.collisions()[&checksum].len(), 4);
@@ -147,7 +150,7 @@ fn test_build_index_with_empty_file() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let index: ResourceIndex<Crc32> =
+    let index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     assert_eq!(index.len(), 1);
 }
@@ -294,7 +297,7 @@ fn test_track_removal() {
     let image_path = root_path.join("image.png");
     fs::write(&image_path, "image content").expect("Failed to write to file");
 
-    let mut index: ResourceIndex<Crc32> =
+    let mut index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 2);
@@ -330,7 +333,7 @@ fn test_track_removal_non_existent() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let mut index: ResourceIndex<Crc32> =
+    let mut index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 1);
@@ -364,7 +367,7 @@ fn test_track_addition() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let mut index: ResourceIndex<Crc32> =
+    let mut index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 1);
@@ -405,7 +408,7 @@ fn test_track_addition_empty_file() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let mut index: ResourceIndex<Crc32> =
+    let mut index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 1);
@@ -437,7 +440,7 @@ fn test_track_addition_non_existent() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let mut index: ResourceIndex<Crc32> =
+    let mut index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 1);
@@ -472,7 +475,7 @@ fn test_track_modification() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let mut index: ResourceIndex<Crc32> =
+    let mut index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 1);
@@ -519,7 +522,7 @@ fn test_track_modification_does_not_add() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let mut index: ResourceIndex<Crc32> =
+    let mut index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 1);
@@ -618,7 +621,7 @@ fn test_add_colliding_files() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let mut index: ResourceIndex<Crc32> =
+    let mut index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 1);
@@ -656,7 +659,7 @@ fn test_num_collisions() {
     let file_path = root_path.join("file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let mut index: ResourceIndex<Crc32> =
+    let mut index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 1);
@@ -692,7 +695,7 @@ fn test_hidden_files() {
     let file_path = root_path.join(".hidden_file.txt");
     fs::write(&file_path, "file content").expect("Failed to write to file");
 
-    let index: ResourceIndex<Crc32> =
+    let index: ResourceIndex<HashType> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
     assert_eq!(index.len(), 0);
