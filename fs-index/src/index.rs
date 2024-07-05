@@ -322,8 +322,8 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         let current_resources = self.resources();
         let new_resources = new_index.resources();
         for resource in new_resources.clone() {
-            // If the resource is in the old index, check if it has been
-            // modified
+            // If the resource is in the old index,
+            // check if it has been modified
             if let Some(current_resource) =
                 self.get_resource_by_path(&resource.path)
             {
@@ -381,7 +381,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             )));
         }
         let metadata = fs::metadata(&full_path)?;
-        // return an error if the file is empty
+        // empty files don't have content, so we can't compute id
         if metadata.len() == 0 {
             return Err(ArklibError::Path(format!(
                 "File is empty: {:?}",
