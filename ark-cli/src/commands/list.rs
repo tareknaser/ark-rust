@@ -134,8 +134,8 @@ impl List {
                             let mut contents = String::new();
                             match file.read_to_string(&mut contents) {
                                 Ok(_) => {
-                                    // Check if the content of the file is a
-                                    // valid url
+                                    // Check if the content
+                                    // of the file is a valid url
                                     let url = contents.trim();
                                     let url = url::Url::parse(url);
                                     match url {

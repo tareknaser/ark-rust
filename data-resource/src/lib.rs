@@ -11,8 +11,8 @@ use std::{fmt::Debug, hash::Hash, path::Path};
 /// Resources are identified by a hash value, which is computed from the
 /// resource's data. The hash value is used to uniquely identify the resource.
 ///
-/// Implementors of this trait must provide a way to compute the hash value from
-/// the resource's data.
+/// Implementors of this trait must provide a way to compute
+/// the hash value from the resource's data.
 pub trait ResourceId:
     Debug
     + Display
