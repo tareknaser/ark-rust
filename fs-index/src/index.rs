@@ -6,7 +6,6 @@ use std::{
     time::SystemTime,
 };
 
-use anyhow::anyhow;
 use log;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
@@ -103,21 +102,6 @@ impl<Id> IndexedResource<Id> {
 /// let _resource = loaded_index
 ///     .get_resource_by_path("cat.txt")
 ///     .expect("Resource not found");
-///
-/// // Track the removal of a file
-/// loaded_index
-///     .track_removal(Path::new("cat.txt"))
-///     .expect("Failed to track removal");
-///
-/// // Track the addition of a new file
-/// loaded_index
-///     .track_addition(Path::new("dog.txt"))
-///     .expect("Failed to track addition");
-///
-/// // Track the modification of a file
-/// loaded_index
-///     .track_modification(Path::new("dog.txt"))
-///     .expect("Failed to track modification");
 /// ```
 #[derive(Clone, Debug)]
 pub struct ResourceIndex<Id>
@@ -350,152 +334,5 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             modified,
             removed,
         })
-    }
-
-    /// Track the addition of a newly added file to the resource index.
-    ///
-    /// This method checks if the file exists in the file system.
-    ///
-    /// # Arguments
-    /// * `relative_path` - The path of the file to be added (relative to the
-    ///   root path of the index).
-    ///
-    /// # Returns
-    /// Returns `Ok(resource)` if the file was successfully added to the index.
-    ///
-    /// # Errors
-    /// - If the file does not exist in the file system.
-    /// - If there was an error calculating the checksum of the file.
-    pub fn track_addition<P: AsRef<Path>>(
-        &mut self,
-        relative_path: P,
-    ) -> Result<IndexedResource<Id>> {
-        log::debug!("Tracking addition of file: {:?}", relative_path.as_ref());
-
-        let path = relative_path.as_ref();
-        let full_path = self.root.join(path);
-        if !full_path.exists() {
-            return Err(ArklibError::Path(format!(
-                "File does not exist: {:?}",
-                full_path
-            )));
-        }
-        let metadata = fs::metadata(&full_path)?;
-        // empty files don't have content, so we can't compute id
-        if metadata.len() == 0 {
-            return Err(ArklibError::Path(format!(
-                "File is empty: {:?}",
-                full_path
-            )));
-        }
-        let last_modified = metadata.modified()?;
-        let id = Id::from_path(&full_path)?;
-
-        let resource = IndexedResource {
-            id: id.clone(),
-            path: path.to_path_buf(),
-            last_modified,
-        };
-        self.path_to_resource
-            .insert(resource.path.clone(), resource.clone());
-        self.id_to_resources
-            .entry(id)
-            .or_default()
-            .push(resource.clone());
-
-        Ok(resource)
-    }
-
-    /// Track the removal of a file from the resource index.
-    ///
-    /// This method checks if the file exists in the file system
-    ///
-    /// # Arguments
-    /// * `relative_path` - The path of the file to be removed (relative to the
-    ///   root path of the index).
-    ///
-    /// # Returns
-    /// Returns `Ok(resource)` if the resource was successfully removed from the
-    /// index.
-    ///
-    /// # Errors
-    /// - If the file still exists in the file system.
-    /// - If the resource does not exist in the index.
-    pub fn track_removal<P: AsRef<Path>>(
-        &mut self,
-        relative_path: P,
-    ) -> Result<IndexedResource<Id>> {
-        log::debug!("Tracking removal of file: {:?}", relative_path.as_ref());
-
-        let path = relative_path.as_ref();
-        let full_path = self.root.join(path);
-        if full_path.exists() {
-            return Err(ArklibError::Path(format!(
-                "File still exists: {:?}",
-                full_path
-            )));
-        }
-
-        // Remove the resource from the index
-        let resource = self
-            .path_to_resource
-            .remove(path)
-            .ok_or_else(|| anyhow!("Resource not found: {}", path.display()))?;
-
-        // Remove the resource from the id_to_resources map
-        if let Some(resources) = self.id_to_resources.get_mut(&resource.id) {
-            resources.retain(|r| r.path != resource.path);
-            if resources.is_empty() {
-                self.id_to_resources.remove(&resource.id);
-            }
-        }
-
-        Ok(resource)
-    }
-
-    /// Track the modification of a file in the resource index.
-    ///
-    /// This method checks if the file exists in the file system and removes the
-    /// old resource from the index before adding the new resource to the
-    /// index.
-    ///
-    /// # Arguments
-    /// * `relative_path` - The relative path of the file to be modified.
-    ///
-    /// # Returns
-    /// Returns `Ok(new_resource)` if the resource was successfully modified in
-    /// the index.
-    ///
-    /// # Errors
-    /// - If there was a problem removing the old resource from the index.
-    /// - If there was a problem adding the new resource to the index.
-    pub fn track_modification<P: AsRef<Path>>(
-        &mut self,
-        relative_path: P,
-    ) -> Result<IndexedResource<Id>> {
-        log::debug!(
-            "Tracking modification of file: {:?}",
-            relative_path.as_ref()
-        );
-
-        let path = relative_path.as_ref();
-        // Remove the resource from the index
-        let resource = self
-            .path_to_resource
-            .remove(path)
-            .ok_or_else(|| anyhow!("Resource not found: {}", path.display()))?;
-
-        // Remove the resource from the id_to_resources map
-        if let Some(resources) = self.id_to_resources.get_mut(&resource.id) {
-            resources.retain(|r| r.path != resource.path);
-            if resources.is_empty() {
-                self.id_to_resources.remove(&resource.id);
-            }
-        }
-
-        // Add the new resource to the index
-        let new_resource = self.track_addition(path)?;
-
-        Ok(new_resource)
     }
 }

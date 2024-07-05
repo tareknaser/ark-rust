@@ -55,61 +55,6 @@ fn resource_index_benchmark(c: &mut Criterion) {
         });
     });
 
-    // Benchmark `ResourceIndex::track_addition()`
-    let new_file = benchmarks_dir.join("new_file.txt");
-    group.bench_function("index_track_addition", |b| {
-        b.iter(|| {
-            std::fs::File::create(&new_file).unwrap();
-            std::fs::write(&new_file, "Hello, World!").unwrap();
-            let mut index: ResourceIndex<Crc32> =
-                ResourceIndex::build(black_box(benchmarks_dir)).unwrap();
-            let _addition_result = index.track_addition(&new_file).unwrap();
-
-            // Cleanup
-            std::fs::remove_file(&new_file).unwrap();
-        });
-    });
-
-    // Benchmark `ResourceIndex::track_removal()`
-    let removed_file = benchmarks_dir.join("new_file.txt");
-    group.bench_function("index_track_removal", |b| {
-        b.iter(|| {
-            std::fs::File::create(&removed_file).unwrap();
-            std::fs::write(&removed_file, "Hello, World!").unwrap();
-            let mut index: ResourceIndex<Crc32> =
-                ResourceIndex::build(black_box(benchmarks_dir)).unwrap();
-            std::fs::remove_file(&removed_file).unwrap();
-            let relative_path = removed_file
-                .strip_prefix(benchmarks_dir)
-                .unwrap()
-                .to_str()
-                .unwrap();
-            let _removal_result = index.track_removal(&relative_path).unwrap();
-        });
-    });
-
-    // Benchmark `ResourceIndex::track_modification()`
-    let modified_file = benchmarks_dir.join("new_file.txt");
-    group.bench_function("index_track_modification", |b| {
-        b.iter(|| {
-            std::fs::File::create(&modified_file).unwrap();
-            std::fs::write(&modified_file, "Hello, World!").unwrap();
-            let mut index: ResourceIndex<Crc32> =
-                ResourceIndex::build(black_box(benchmarks_dir)).unwrap();
-            std::fs::write(&modified_file, "Hello, World! Modified").unwrap();
-            let relative_path = modified_file
-                .strip_prefix(benchmarks_dir)
-                .unwrap()
-                .to_str()
-                .unwrap();
-            let _modification_result =
-                index.track_modification(&relative_path).unwrap();
-
-            // Cleanup
-            std::fs::remove_file(&modified_file).unwrap();
-        });
-    });
-
     // Benchmark `ResourceIndex::update_all()`
 
     // First, create a new temp directory specifically for the update_all
