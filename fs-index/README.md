@@ -1,6 +1,8 @@
 # fs-index
 
-The `fs-index` crate is part of the ARK framework, designed to help track resources in an index. This crate provides a robust system for managing a directory index, including tracking changes and querying resources.
+`fs-index` is a Rust crate for managing and indexing file system resources. It provides a flexible and efficient way to track changes, query resources, and keep files in sync across multiple devices or locations.
+
+Originally developed for the Ark framework to support local-first applications, `fs-index` can also be used in various scenarios including backup systems, content management, and more.
 
 ## Features
 
