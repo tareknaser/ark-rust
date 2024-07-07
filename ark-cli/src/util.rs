@@ -1,5 +1,5 @@
 use crate::ResourceId;
-use fs_index::index::ResourceIndex;
+use fs_index::ResourceIndex;
 use fs_metadata::METADATA_STORAGE_FOLDER;
 use fs_properties::PROPERTIES_STORAGE_FOLDER;
 use fs_storage::{

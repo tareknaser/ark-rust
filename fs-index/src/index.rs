@@ -6,7 +6,6 @@ use std::{
     time::SystemTime,
 };
 
-use log;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 

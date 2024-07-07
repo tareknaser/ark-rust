@@ -1,10 +1,14 @@
-pub mod index;
+mod index;
 mod serde;
 mod utils;
 
 pub use utils::load_or_build_index;
 
-#[cfg(test)]
-mod tests;
-
 pub use index::ResourceIndex;
+
+#[cfg(test)]
+mod test_blake3;
+#[cfg(test)]
+mod test_crc32;
+#[cfg(test)]
+mod test_utils;

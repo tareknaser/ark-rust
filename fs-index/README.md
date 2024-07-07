@@ -2,21 +2,17 @@
 
 `fs-index` is a Rust crate for managing and indexing file system resources. It provides a flexible and efficient way to track changes, query resources, and keep files in sync across multiple devices or locations.
 
-Originally developed for the Ark framework to support local-first applications, `fs-index` can also be used in various scenarios including backup systems, content management, and more.
+Originally developed for the ARK framework to support local-first applications, `fs-index` can also be used in various scenarios including backup systems, content management, and more.
 
 ## Features
 
 The most important struct in this crate is `ResourceIndex` which comes with:
 
 - **Reactive API**
-  - `update_all`: Method to update the index by rescanning files and returning changes (additions/deletions/updates).
+  - `update_all`: Method to update the index by rescanning files and returning changes (additions/deletions).
 - **Snapshot API**
   - `get_resources_by_id`: Query resources from the index by ID.
   - `get_resource_by_path`: Query a resource from the index by its path.
-- **Track API**
-  - `track_addition`: Track a newly added file (checks if the file exists in the file system).
-  - `track_removal`: Track the deletion of a file (checks if the file was actually deleted).
-  - `track_modification`: Track an update on a single file.
 
 ## Custom Serialization
 

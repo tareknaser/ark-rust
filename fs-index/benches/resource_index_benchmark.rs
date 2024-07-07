@@ -6,7 +6,7 @@ use criterion::{
 use tempfile::TempDir;
 
 use dev_hash::Crc32;
-use fs_index::index::ResourceIndex;
+use fs_index::ResourceIndex;
 
 // The path to the test assets directory
 const DIR_PATH: &str = "../test-assets/";
