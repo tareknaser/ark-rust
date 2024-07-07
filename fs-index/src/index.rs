@@ -249,7 +249,8 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         let entries: HashMap<PathBuf, IndexedResource<Id>> = entries
             .into_iter()
             .map(|(path, resource)| {
-                let relative_path = path.strip_prefix(&root).unwrap().to_path_buf();
+                let relative_path =
+                    path.strip_prefix(&root).unwrap().to_path_buf();
                 let resource = IndexedResource::new(
                     resource.id().clone(),
                     relative_path.clone(),
@@ -346,8 +347,6 @@ impl<Id: ResourceId> ResourceIndex<Id> {
                                 );
                                 return None;
                             }};
-                        
-
                         if elapsed_time > RESOURCE_UPDATED_THRESHOLD {
                             log::trace!(
                                 "Resource updated: {:?}, previous: {:?}, current: {:?}, elapsed: {:?}",
@@ -378,8 +377,11 @@ impl<Id: ResourceId> ResourceIndex<Id> {
                 })
                 .collect();
         for (path, resource) in removed_entries {
-            log::trace!
-                ("Resource removed: {:?}, last modified: {:?}", path, resource.last_modified());
+            log::trace!(
+                "Resource removed: {:?}, last modified: {:?}",
+                path,
+                resource.last_modified()
+            );
 
             self.path_to_resource.remove(&path);
             self.id_to_resources
@@ -409,14 +411,18 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             log::trace!("Resource added: {:?}", path);
 
             // strip the root path from the path
-            let relative_path = path.strip_prefix(&self.root).unwrap().to_path_buf();
+            let relative_path = path
+                .strip_prefix(&self.root)
+                .unwrap()
+                .to_path_buf();
             let resource = IndexedResource::new(
                 resource.id().clone(),
                 relative_path.clone(),
                 resource.last_modified(),
             );
 
-            self.path_to_resource.insert(relative_path.clone(), resource.clone());
+            self.path_to_resource
+                .insert(relative_path.clone(), resource.clone());
             let id = resource.id().clone();
             self.id_to_resources
                 .entry(id)
@@ -428,4 +434,3 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         Ok(IndexUpdate { added, removed })
     }
 }
-
