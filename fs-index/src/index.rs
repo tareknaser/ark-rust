@@ -3,17 +3,19 @@ use std::{
     fs,
     hash::Hash,
     path::{Path, PathBuf},
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use serde::{Deserialize, Serialize};
-use walkdir::WalkDir;
 
-use data_error::{ArklibError, Result};
+use data_error::Result;
 use data_resource::ResourceId;
 use fs_storage::{ARK_FOLDER, INDEX_PATH};
 
-use crate::utils::should_index;
+use crate::utils::{discover_paths, scan_entries};
+
+/// The threshold for considering a resource updated
+pub const RESOURCE_UPDATED_THRESHOLD: Duration = Duration::from_millis(1);
 
 /// Represents a resource in the index
 #[derive(
@@ -123,8 +125,6 @@ where
 pub struct IndexUpdate<Id: ResourceId> {
     /// Resources that were added during the update
     added: Vec<IndexedResource<Id>>,
-    /// Resources that were modified during the update
-    modified: Vec<IndexedResource<Id>>,
     /// Resources that were removed during the update
     removed: Vec<IndexedResource<Id>>,
 }
@@ -133,11 +133,6 @@ impl<Id: ResourceId> IndexUpdate<Id> {
     /// Return the resources that were added during the update
     pub fn added(&self) -> &Vec<IndexedResource<Id>> {
         &self.added
-    }
-
-    /// Return the resources that were modified during the update
-    pub fn modified(&self) -> &Vec<IndexedResource<Id>> {
-        &self.modified
     }
 
     /// Return the resources that were removed during the update
@@ -245,93 +240,192 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         let mut id_to_resources = HashMap::new();
         let mut path_to_resource = HashMap::new();
 
-        // Loop through the root path and add resources to the index
-        let walker = WalkDir::new(&root)
-            .min_depth(1) // Skip the root directory
-            .into_iter()
-            .filter_entry(should_index); // Skip hidden files
-        for entry in walker {
-            let entry = entry.map_err(|e| {
-                ArklibError::Path(format!("Error walking directory: {}", e))
-            })?;
-            // Ignore directories
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let path = entry.path();
-            let metadata = fs::metadata(path)?;
-            // Ignore empty files
-            if metadata.len() == 0 {
-                continue;
-            }
-            let last_modified = metadata.modified()?;
-            let id = Id::from_path(path)?;
-            // Path is relative to the root
-            let path = path.strip_prefix(&root).map_err(|_| {
-                ArklibError::Path("Error stripping prefix".to_string())
-            })?;
+        // Discover paths in the root directory
+        let paths = discover_paths(&root)?;
+        let entries: HashMap<PathBuf, IndexedResource<Id>> =
+            scan_entries(paths);
 
-            // Create the resource and add it to the index
-            let resource = IndexedResource {
-                id: id.clone(),
-                path: path.to_path_buf(),
-                last_modified,
-            };
-            path_to_resource.insert(resource.path.clone(), resource.clone());
+        // Strip the root path from the entries
+        let entries: HashMap<PathBuf, IndexedResource<Id>> = entries
+            .into_iter()
+            .map(|(path, resource)| {
+                let relative_path = path.strip_prefix(&root).unwrap().to_path_buf();
+                let resource = IndexedResource::new(
+                    resource.id().clone(),
+                    relative_path.clone(),
+                    resource.last_modified(),
+                );
+                (relative_path, resource)
+            })
+            .collect();
+
+        // Update the path to resource map
+        path_to_resource.extend(entries.clone());
+
+        // Update the ID to resources map
+        for resource in entries.values() {
+            let id = resource.id().clone();
             id_to_resources
                 .entry(id)
                 .or_insert_with(Vec::new)
-                .push(resource);
+                .push(resource.clone());
         }
 
-        Ok(ResourceIndex {
+        let index = ResourceIndex {
             root,
             id_to_resources,
             path_to_resource,
-        })
+        };
+        Ok(index)
     }
 
     /// Update the index with the latest information from the file system
     pub fn update_all(&mut self) -> Result<IndexUpdate<Id>> {
         log::debug!("Updating index at root path: {:?}", self.root);
+        log::trace!("Current index: {:#?}", self);
 
         let mut added = Vec::new();
-        let mut modified = Vec::new();
         let mut removed = Vec::new();
 
-        let new_index = ResourceIndex::build(&self.root)?;
+        let current_paths = discover_paths(&self.root)?;
 
-        // Compare the new index with the old index
-        let current_resources = self.resources();
-        let new_resources = new_index.resources();
-        for resource in new_resources.clone() {
-            // If the resource is in the old index,
-            // check if it has been modified
-            if let Some(current_resource) =
-                self.get_resource_by_path(&resource.path)
-            {
-                if current_resource != &resource {
-                    modified.push(resource.clone());
-                }
-            }
-            // If the resource is not in the old index, it has been added
-            else {
-                added.push(resource.clone());
-            }
-        }
-        for resource in current_resources {
-            // If the resource is not in the new index, it has been removed
-            if !new_resources.contains(&resource) {
-                removed.push(resource.clone());
-            }
+        // Assuming that collection manipulation is faster than repeated
+        // lookups
+        let current_entries: HashMap<PathBuf, IndexedResource<Id>> =
+            scan_entries(current_paths.clone());
+        let previous_entries = self.path_to_resource.clone();
+        // `preserved_entries` is the intersection of current_entries and
+        // previous_entries
+        let preserved_entries: HashMap<PathBuf, IndexedResource<Id>> =
+            current_entries
+                .iter()
+                .filter_map(|(path, _resource)| {
+                    previous_entries.get(path).map(|prev_resource| {
+                        (path.clone(), prev_resource.clone())
+                    })
+                })
+                .collect();
+
+        // `created_entries` is the difference between current_entries and
+        // preserved_entries
+        let created_entries: HashMap<PathBuf, IndexedResource<Id>> =
+            current_entries
+                .iter()
+                .filter_map(|(path, resource)| {
+                    if preserved_entries.contains_key(path) {
+                        None
+                    } else {
+                        Some((path.clone(), resource.clone()))
+                    }
+                })
+                .collect();
+
+        // `updated_entries` is the difference between preserved_entries and
+        // current_entries where the last modified time has changed
+        // significantly
+        let updated_entries: HashMap<PathBuf, IndexedResource<Id>> =
+            preserved_entries
+                .iter()
+                .filter_map(|(path, resource)| {
+                    if current_entries.contains_key(path) {
+                        None
+                    } else {
+                        let our_entry =
+                            self.path_to_resource.get(path).unwrap();
+                        let previous_modified = our_entry.last_modified();
+
+                        let current_modified = resource.last_modified();
+
+                        let elapsed_time = match current_modified
+                            .duration_since(previous_modified) {
+                            Ok(duration) => duration,
+                            Err(err) => {
+                                log::error!(
+                                    "Failed to calculate elapsed time: {:?}",
+                                    err
+                                );
+                                return None;
+                            }};
+                        
+
+                        if elapsed_time > RESOURCE_UPDATED_THRESHOLD {
+                            log::trace!(
+                                "Resource updated: {:?}, previous: {:?}, current: {:?}, elapsed: {:?}",
+                                path,
+                                previous_modified,
+                                current_modified,
+                                elapsed_time
+                            );
+
+                            Some((path.clone(), resource.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                })
+                .collect();
+
+        // Remove resources that are not in the current entries
+        let removed_entries: HashMap<PathBuf, IndexedResource<Id>> =
+            previous_entries
+                .iter()
+                .filter_map(|(path, resource)| {
+                    if preserved_entries.contains_key(path) {
+                        None
+                    } else {
+                        Some((path.clone(), resource.clone()))
+                    }
+                })
+                .collect();
+        for (path, resource) in removed_entries {
+            log::trace!
+                ("Resource removed: {:?}, last modified: {:?}", path, resource.last_modified());
+
+            self.path_to_resource.remove(&path);
+            self.id_to_resources
+                .get_mut(resource.id())
+                .unwrap()
+                .retain(|r| r.path() != resource.path());
+            let id = resource.id().clone();
+            let resources = self.id_to_resources.get_mut(&id).unwrap();
+            resources.retain(|r| r.path() != resource.path());
+            removed.push(resource);
         }
 
-        // Update the index with the new index and return the result
-        *self = new_index;
-        Ok(IndexUpdate {
-            added,
-            modified,
-            removed,
-        })
+        let added_entries: HashMap<PathBuf, IndexedResource<Id>> =
+            updated_entries
+                .iter()
+                .chain(created_entries.iter())
+                .filter_map(|(path, resource)| {
+                    if self.path_to_resource.contains_key(path) {
+                        None
+                    } else {
+                        Some((path.clone(), resource.clone()))
+                    }
+                })
+                .collect();
+
+        for (path, resource) in added_entries {
+            log::trace!("Resource added: {:?}", path);
+
+            // strip the root path from the path
+            let relative_path = path.strip_prefix(&self.root).unwrap().to_path_buf();
+            let resource = IndexedResource::new(
+                resource.id().clone(),
+                relative_path.clone(),
+                resource.last_modified(),
+            );
+
+            self.path_to_resource.insert(relative_path.clone(), resource.clone());
+            let id = resource.id().clone();
+            self.id_to_resources
+                .entry(id)
+                .or_default()
+                .push(resource.clone());
+            added.push(resource);
+        }
+
+        Ok(IndexUpdate { added, removed })
     }
 }
+

@@ -1,18 +1,17 @@
-use std::{fs, io::BufReader, path::Path};
+use std::{
+    collections::HashMap,
+    fs,
+    io::BufReader,
+    path::{Path, PathBuf},
+};
+
+use walkdir::{DirEntry, WalkDir};
 
 use data_error::{ArklibError, Result};
 use data_resource::ResourceId;
 use fs_storage::{ARK_FOLDER, INDEX_PATH};
 
-use crate::ResourceIndex;
-
-/// A helper function to check if the entry should be indexed (not hidden)
-pub fn should_index(entry: &walkdir::DirEntry) -> bool {
-    !entry
-        .file_name()
-        .to_string_lossy()
-        .starts_with('.')
-}
+use crate::{index::IndexedResource, ResourceIndex};
 
 /// Load the index from the file system
 fn load_index<P: AsRef<Path>, Id: ResourceId>(
@@ -66,4 +65,86 @@ pub fn load_or_build_index<P: AsRef<Path>, Id: ResourceId>(
         })?;
         Ok(index)
     }
+}
+
+/// A helper function to discover paths in a directory
+///
+/// This function walks the directory tree starting from the root path and
+/// returns a list of file paths.
+///
+/// Ignore hidden files and empty files.
+pub(crate) fn discover_paths<P: AsRef<Path>>(
+    root_path: P,
+) -> Result<Vec<DirEntry>> {
+    log::debug!("Discovering paths at root path: {:?}", root_path.as_ref());
+
+    let walker = WalkDir::new(&root_path)
+        .min_depth(1) // Skip the root directory
+        .into_iter()
+        .filter_entry(should_index); // Skip hidden files and empty files
+
+    // Filter out directories
+    let paths = walker
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            if entry.file_type().is_file() {
+                Some(entry)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    Ok(paths)
+}
+
+/// A helper function to scan entries and create indexed resources
+pub(crate) fn scan_entries<Id: ResourceId>(
+    paths: Vec<DirEntry>,
+) -> HashMap<PathBuf, IndexedResource<Id>> {
+    let mut path_to_resource = HashMap::new();
+    for entry in paths {
+        let resource = scan_entry(entry);
+        path_to_resource.insert(resource.path().to_path_buf(), resource);
+    }
+    path_to_resource
+}
+
+/// A helper function to scan one entry and create an indexed resource
+pub(crate) fn scan_entry<Id: ResourceId>(
+    entry: DirEntry,
+) -> IndexedResource<Id> {
+    let path = entry.path().to_path_buf();
+    let metadata = entry.metadata().unwrap();
+    let last_modified = metadata.modified().unwrap();
+
+    // Get the ID of the resource
+    let id = Id::from_path(&path).unwrap();
+
+    // Create the indexed resource
+    IndexedResource::new(id, path, last_modified)
+}
+
+/// A helper function to check if the entry should be indexed (not hidden or
+/// empty)
+fn should_index(entry: &walkdir::DirEntry) -> bool {
+    // Check if the entry is hidden
+    if entry
+        .file_name()
+        .to_string_lossy()
+        .starts_with('.')
+    {
+        return false;
+    }
+
+    // Check if the entry is empty
+    if entry
+        .metadata()
+        .map(|m| m.len() == 0)
+        .unwrap_or(false)
+    {
+        return false;
+    }
+
+    true
 }

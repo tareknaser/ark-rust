@@ -119,9 +119,6 @@ pub fn monitor_index(
                             if !diff.added().is_empty() {
                                 println!("Added: {:?}", diff.added());
                             }
-                            if !diff.modified().is_empty() {
-                                println!("Modified: {:?}", diff.modified());
-                            }
                         }
                     }
                 }
