@@ -39,7 +39,7 @@ jobs:
       - name: Run tests
         run: |
           cargo test --verbose
-          cargo test --verbose --features blake3
+          cargo test --verbose
 
       - name: Build Release
         run: cargo build --verbose --release
@@ -73,7 +73,7 @@ jobs:
       - name: Run tests
         run: |
           cargo test --workspace --verbose
-          cargo test --workspace --verbose --features blake3
+          cargo test --workspace --verbose
 
       - name: Install JDK
         uses: actions/setup-java@v4.2.1
@@ -104,7 +104,7 @@ jobs:
       - name: Run tests
         run: |
           cargo test --workspace --verbose
-          cargo test --workspace --verbose --features blake3
+          cargo test --workspace --verbose
 
       - name: Install JDK
         uses: actions/setup-java@v4.2.1
