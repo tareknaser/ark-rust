@@ -115,13 +115,13 @@ fn test_store_and_load_index<H: ResourceId>() {
 
     let index: ResourceIndex<H> =
         ResourceIndex::build(root_path).expect("Failed to build index");
-    assert_eq!(index.len(), 1);
+    assert_eq!(index.len(), 1, "{:?}", index);
     index.store().expect("Failed to store index");
 
     let loaded_index =
         load_or_build_index(root_path, false).expect("Failed to load index");
 
-    assert_eq!(index, loaded_index);
+    assert_eq!(index, loaded_index, "{:?} != {:?}", index, loaded_index);
 }
 
 /// Test storing and loading the resource index with collisions.
@@ -155,15 +155,15 @@ fn test_store_and_load_index_with_collisions<H: ResourceId>() {
     let index: ResourceIndex<H> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     let checksum = H::from_path(&file_path).expect("Failed to get checksum");
-    assert_eq!(index.len(), 4);
-    assert_eq!(index.collisions().len(), 1);
-    assert_eq!(index.collisions()[&checksum].len(), 4);
+    assert_eq!(index.len(), 4, "{:?}", index);
+    assert_eq!(index.collisions().len(), 1, "{:?}", index);
+    assert_eq!(index.collisions()[&checksum].len(), 4, "{:?}", index);
     index.store().expect("Failed to store index");
 
     let loaded_index =
         load_or_build_index(root_path, false).expect("Failed to load index");
 
-    assert_eq!(index, loaded_index);
+    assert_eq!(index, loaded_index, "{:?} != {:?}", index, loaded_index);
 }
 
 /// Test building an index with a file.
@@ -186,12 +186,16 @@ fn test_build_index_with_file<H: ResourceId>() {
             .expect("Failed to get indexed resource");
 
     let index = ResourceIndex::build(root_path).expect("Failed to build index");
-    assert_eq!(index.len(), 1);
+    assert_eq!(index.len(), 1, "{:?}", index);
 
     let resource = index
         .get_resource_by_path("file.txt")
         .expect("Failed to get resource");
-    assert_eq!(resource, &expected_resource);
+    assert_eq!(
+        resource, &expected_resource,
+        "{:?} != {:?}",
+        resource, expected_resource
+    );
 }
 
 /// Test building an index with an empty file.
@@ -214,7 +218,7 @@ fn test_build_index_with_empty_file<H: ResourceId>() {
 
     let index: ResourceIndex<H> =
         ResourceIndex::build(root_path).expect("Failed to build index");
-    assert_eq!(index.len(), 1);
+    assert_eq!(index.len(), 1, "{:?}", index);
 }
 
 /// Test building an index with a directory.
@@ -240,12 +244,16 @@ fn test_build_index_with_directory<H: ResourceId>() {
             .expect("Failed to get indexed resource");
 
     let index = ResourceIndex::build(root_path).expect("Failed to build index");
-    assert_eq!(index.len(), 1);
+    assert_eq!(index.len(), 1, "{:?}", index);
 
     let resource = index
         .get_resource_by_path("dir/file.txt")
         .expect("Failed to get resource");
-    assert_eq!(resource, &expected_resource);
+    assert_eq!(
+        resource, &expected_resource,
+        "{:?} != {:?}",
+        resource, expected_resource
+    );
 }
 
 /// Test building an index with multiple files.
@@ -275,17 +283,17 @@ fn test_build_index_with_multiple_files<H: ResourceId>() {
             .expect("Failed to get indexed resource");
 
     let index = ResourceIndex::build(root_path).expect("Failed to build index");
-    assert_eq!(index.len(), 2);
+    assert_eq!(index.len(), 2, "{:?}", index);
 
     let resource = index
         .get_resource_by_path("file1.txt")
         .expect("Failed to get resource");
-    assert_eq!(resource, &expected_resource1);
+    assert_eq!(resource, &expected_resource1, "{:?}", resource);
 
     let resource = index
         .get_resource_by_path("file2.txt")
         .expect("Failed to get resource");
-    assert_eq!(resource, &expected_resource2);
+    assert_eq!(resource, &expected_resource2, "{:?}", resource);
 }
 
 /// Test building an index with multiple directories.
@@ -321,17 +329,17 @@ fn test_build_index_with_multiple_directories<H: ResourceId>() {
             .expect("Failed to get indexed resource");
 
     let index = ResourceIndex::build(root_path).expect("Failed to build index");
-    assert_eq!(index.len(), 2);
+    assert_eq!(index.len(), 2, "{:?}", index);
 
     let resource = index
         .get_resource_by_path("dir1/file1.txt")
         .expect("Resource not found");
-    assert_eq!(resource, &expected_resource1);
+    assert_eq!(resource, &expected_resource1, "{:?}", resource);
 
     let resource = index
         .get_resource_by_path("dir2/file2.txt")
         .expect("Resource not found");
-    assert_eq!(resource, &expected_resource2);
+    assert_eq!(resource, &expected_resource2, "{:?}", resource);
 }
 
 /// Test updating the resource index.
@@ -360,7 +368,7 @@ fn test_resource_index_update<H: ResourceId>() {
     let mut index: ResourceIndex<H> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
-    assert_eq!(index.len(), 2);
+    assert_eq!(index.len(), 2, "{:?}", index);
 
     // create new file
     let new_file_path = root_path.join("new_file.txt");
@@ -378,7 +386,7 @@ fn test_resource_index_update<H: ResourceId>() {
         .update_all()
         .expect("Failed to update index");
     // Index now contains 2 resources (file.txt and new_file.txt)
-    assert_eq!(index.len(), 2);
+    assert_eq!(index.len(), 2, "{:?}", index);
 
     let resource = index
         .get_resource_by_path("file.txt")
@@ -386,13 +394,17 @@ fn test_resource_index_update<H: ResourceId>() {
     let expected_resource =
         get_indexed_resource_from_file(&file_path, &root_path.to_path_buf())
             .expect("Failed to get indexed resource");
-    assert_eq!(resource, &expected_resource);
+    assert_eq!(resource, &expected_resource, "{:?}", resource);
 
     let _resource = index
         .get_resource_by_path("new_file.txt")
         .expect("Resource not found");
 
-    assert!(index.get_resource_by_path("image.png").is_none());
+    assert!(
+        index.get_resource_by_path("image.png").is_none(),
+        "{:?}",
+        index
+    );
 }
 
 /// Test adding colliding files to the index.
@@ -417,7 +429,7 @@ fn test_add_colliding_files<H: ResourceId>() {
     let mut index: ResourceIndex<H> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
-    assert_eq!(index.len(), 1);
+    assert_eq!(index.len(), 1, "{:?}", index);
 
     let new_file_path = root_path.join("new_file.txt");
     fs::write(&new_file_path, "file content").expect("Failed to write to file");
@@ -426,8 +438,8 @@ fn test_add_colliding_files<H: ResourceId>() {
         .update_all()
         .expect("Failed to update index");
 
-    assert_eq!(index.len(), 2);
-    assert_eq!(index.collisions().len(), 1);
+    assert_eq!(index.len(), 2, "{:?}", index);
+    assert_eq!(index.collisions().len(), 1, "{:?}", index);
 }
 
 /// Test `ResourceIndex::num_collisions()` method.
@@ -451,7 +463,7 @@ fn test_num_collisions<H: ResourceId>() {
     let mut index: ResourceIndex<H> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
-    assert_eq!(index.len(), 1);
+    assert_eq!(index.len(), 1, "{:?}", index);
 
     let new_file_path = root_path.join("new_file.txt");
     fs::write(&new_file_path, "file content").expect("Failed to write to file");
@@ -464,8 +476,8 @@ fn test_num_collisions<H: ResourceId>() {
         .update_all()
         .expect("Failed to update index");
 
-    assert_eq!(index.len(), 3);
-    assert_eq!(index.num_collisions(), 3);
+    assert_eq!(index.len(), 3, "{:?}", index);
+    assert_eq!(index.num_collisions(), 3, "{:?}", index);
 }
 
 /// Test that we don't index hidden files.
@@ -486,5 +498,5 @@ fn test_hidden_files<H: ResourceId>() {
     let index: ResourceIndex<H> =
         ResourceIndex::build(root_path).expect("Failed to build index");
     index.store().expect("Failed to store index");
-    assert_eq!(index.len(), 0);
+    assert_eq!(index.len(), 0, "{:?}", index);
 }
