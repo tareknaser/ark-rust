@@ -8,9 +8,6 @@ use tempfile::TempDir;
 use dev_hash::Crc32;
 use fs_index::ResourceIndex;
 
-// The path to the test assets directory
-const DIR_PATH: &str = "../test-assets/";
-
 fn resource_index_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("resource_index");
     group.measurement_time(std::time::Duration::from_secs(20)); // Set the measurement time here
@@ -70,8 +67,8 @@ fn resource_index_benchmark(c: &mut Criterion) {
             std::fs::remove_dir_all(&update_all_benchmarks_dir).unwrap();
             std::fs::create_dir(&update_all_benchmarks_dir).unwrap();
 
-            // Create 50 new files
-            for i in 0..50 {
+            // Create 5000 new files
+            for i in 0..5000 {
                 let new_file =
                     update_all_benchmarks_dir.join(format!("file_{}.txt", i));
                 std::fs::File::create(&new_file).unwrap();
@@ -97,49 +94,33 @@ criterion_group! {
 }
 criterion_main!(benches);
 
-/// A helper function to setup a temp directory for the benchmarks using the
-/// test assets directory
+/// A helper function to setup a temp directory for the benchmarks
 fn setup_temp_dir() -> TempDir {
-    // assert the path exists and is a directory
-    assert!(
-        std::path::Path::new(DIR_PATH).is_dir(),
-        "The path: {} does not exist or is not a directory",
-        DIR_PATH
-    );
-
     // Create a temp directory
     let temp_dir = TempDir::with_prefix("ark-fs-index-benchmarks").unwrap();
     let benchmarks_dir = temp_dir.path();
-    let benchmarks_dir_str = benchmarks_dir.to_str().unwrap();
-    log::info!("Temp directory for benchmarks: {}", benchmarks_dir_str);
+    log::info!("Temp directory for benchmarks: {:?}", benchmarks_dir);
 
-    // Copy the test assets to the temp directory
-    let source = std::path::Path::new(DIR_PATH);
-    // Can't use fs::copy because the source is a directory
-    let output = std::process::Command::new("cp")
-        .arg("-r")
-        .arg(source)
-        .arg(benchmarks_dir_str)
-        .output()
-        .expect("Failed to copy test assets to temp directory");
-    if !output.status.success() {
-        panic!(
-            "Failed to copy test assets to temp directory: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+    // Create 10,000 files in the temp directory
+    for i in 0..10000 {
+        let new_file = benchmarks_dir.join(format!("file_{}.txt", i));
+        std::fs::File::create(&new_file).unwrap();
+        // We add the index `i` to the file content to make sure the content is
+        // unique This is to avoid collisions in the index
+        std::fs::write(&new_file, format!("Hello, World! {}", i)).unwrap();
     }
 
     temp_dir
 }
 
-/// A helper function that takes a directory and creates 50 new files, removes
-/// 30 files, and modifies 10 files
+/// A helper function that takes a directory and creates 5000 new files, removes
+/// 3000 files, and modifies 1000 files
 ///
-/// Note: The function assumes that the directory already contains 50 files
-/// named `file_0.txt` to `file_49.txt`
+/// Note: The function assumes that the directory already contains 5000 files
+/// with the names `file_0.txt` to `file_4999.txt`
 fn update_all_files(dir: &PathBuf) {
-    // Create 50 new files
-    for i in 51..101 {
+    // Create 5000 new files
+    for i in 5001..10001 {
         let new_file = dir.join(format!("file_{}.txt", i));
         std::fs::File::create(&new_file).unwrap();
         // We add the index `i` to the file content to make sure the content is
@@ -147,14 +128,14 @@ fn update_all_files(dir: &PathBuf) {
         std::fs::write(&new_file, format!("Hello, World! {}", i)).unwrap();
     }
 
-    // Remove 30 files
-    for i in 0..30 {
+    // Remove 3000 files
+    for i in 0..3000 {
         let removed_file = dir.join(format!("file_{}.txt", i));
         std::fs::remove_file(&removed_file).unwrap();
     }
 
-    // Modify 10 files
-    for i in 40..50 {
+    // Modify 1000 files
+    for i in 4000..5000 {
         let modified_file = dir.join(format!("file_{}.txt", i));
         std::fs::write(&modified_file, "Hello, World!").unwrap();
     }
