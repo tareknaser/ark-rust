@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     hash::Hash,
     path::{Path, PathBuf},
@@ -124,19 +124,19 @@ where
 #[derive(PartialEq, Debug)]
 pub struct IndexUpdate<Id: ResourceId> {
     /// Resources that were added during the update
-    added: Vec<IndexedResource<Id>>,
+    added: HashMap<Id, IndexedResource<Id>>,
     /// Resources that were removed during the update
-    removed: Vec<IndexedResource<Id>>,
+    removed: HashSet<Id>,
 }
 
 impl<Id: ResourceId> IndexUpdate<Id> {
     /// Return the resources that were added during the update
-    pub fn added(&self) -> &Vec<IndexedResource<Id>> {
+    pub fn added(&self) -> &HashMap<Id, IndexedResource<Id>> {
         &self.added
     }
 
     /// Return the resources that were removed during the update
-    pub fn removed(&self) -> &Vec<IndexedResource<Id>> {
+    pub fn removed(&self) -> &HashSet<Id> {
         &self.removed
     }
 }
@@ -285,8 +285,8 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         log::debug!("Updating index at root path: {:?}", self.root);
         log::trace!("Current index: {:#?}", self);
 
-        let mut added = Vec::new();
-        let mut removed = Vec::new();
+        let mut added = HashMap::new();
+        let mut removed = HashSet::new();
 
         let current_paths = discover_paths(&self.root)?;
 
@@ -409,7 +409,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             let id = resource.id().clone();
             let resources = self.id_to_resources.get_mut(&id).unwrap();
             resources.retain(|r| r.path() != resource.path());
-            removed.push(resource);
+            removed.insert(id);
         }
 
         let added_entries: HashMap<PathBuf, IndexedResource<Id>> =
@@ -443,10 +443,10 @@ impl<Id: ResourceId> ResourceIndex<Id> {
                 .insert(relative_path.clone(), resource.clone());
             let id = resource.id().clone();
             self.id_to_resources
-                .entry(id)
+                .entry(id.clone())
                 .or_default()
                 .push(resource.clone());
-            added.push(resource);
+            added.insert(id, resource);
         }
 
         Ok(IndexUpdate { added, removed })
