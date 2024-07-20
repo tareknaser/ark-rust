@@ -321,44 +321,62 @@ impl<Id: ResourceId> ResourceIndex<Id> {
                 })
                 .collect();
 
-        // `updated_entries` is the difference between preserved_entries and
-        // current_entries where the last modified time has changed
-        // significantly
+        // `updated_entries` is the intersection of current_entries and
+        // preserved_entries where the last modified time has changed
+        // significantly (> RESOURCE_UPDATED_THRESHOLD)
         let updated_entries: HashMap<PathBuf, IndexedResource<Id>> =
-            preserved_entries
-                .iter()
-                .filter_map(|(path, resource)| {
-                    if current_entries.contains_key(path) {
-                        None
+            current_entries
+                .into_iter()
+                .filter(|(path, entry)| {
+                    if !preserved_entries.contains_key(path) {
+                        false
                     } else {
-                        let our_entry =
-                            self.path_to_resource.get(path).unwrap();
-                        let previous_modified = our_entry.last_modified();
+                        let our_entry = &self.path_to_resource[path];
+                        let prev_modified = our_entry.last_modified();
 
-                        let current_modified = resource.last_modified();
-
-                        let elapsed_time = match current_modified
-                            .duration_since(previous_modified) {
-                            Ok(duration) => duration,
-                            Err(err) => {
+                        let result = entry.path().metadata();
+                        match result {
+                            Err(msg) => {
                                 log::error!(
-                                    "Failed to calculate elapsed time: {:?}",
-                                    err
+                                    "Couldn't retrieve metadata for {}: {}",
+                                    &path.display(),
+                                    msg
                                 );
-                                return None;
-                            }};
-                        if elapsed_time > RESOURCE_UPDATED_THRESHOLD {
-                            log::trace!(
-                                "Resource updated: {:?}, previous: {:?}, current: {:?}, elapsed: {:?}",
-                                path,
-                                previous_modified,
-                                current_modified,
-                                elapsed_time
-                            );
+                                false
+                            }
+                            Ok(metadata) => match metadata.modified() {
+                                Err(msg) => {
+                                    log::error!(
+                                    "Couldn't retrieve timestamp for {}: {}",
+                                    &path.display(),
+                                    msg
+                                );
+                                    false
+                                }
+                                Ok(curr_modified) => {
+                                    let elapsed = curr_modified
+                                        .duration_since(prev_modified)
+                                        .unwrap();
 
-                            Some((path.clone(), resource.clone()))
-                        } else {
-                            None
+                                    let was_updated =
+                                        elapsed >= RESOURCE_UPDATED_THRESHOLD;
+                                    if was_updated {
+                                        log::trace!(
+                                            "[update] modified {} by path {}
+                                        \twas {:?}
+                                        \tnow {:?}
+                                        \telapsed {:?}",
+                                            our_entry.id,
+                                            path.display(),
+                                            prev_modified,
+                                            curr_modified,
+                                            elapsed
+                                        );
+                                    }
+
+                                    was_updated
+                                }
+                            },
                         }
                     }
                 })
