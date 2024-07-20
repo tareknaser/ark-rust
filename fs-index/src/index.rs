@@ -111,11 +111,11 @@ where
 {
     /// The root path of the index (canonicalized)
     pub(crate) root: PathBuf,
-    /// A map from resource IDs to resources
+    /// A map from resource IDs to paths
     ///
     /// Multiple resources can have the same ID (e.g., due to hash collisions
     /// or files with the same content)
-    pub(crate) id_to_resources: HashMap<Id, Vec<IndexedResource<Id>>>,
+    pub(crate) id_to_paths: HashMap<Id, HashSet<PathBuf>>,
     /// A map from resource paths to resources
     pub(crate) path_to_resource: HashMap<PathBuf, IndexedResource<Id>>,
 }
@@ -169,12 +169,12 @@ impl<Id: ResourceId> ResourceIndex<Id> {
     /// should be files with the same content. If you are using a
     /// non-cryptographic hash function, collisions can be files with the
     /// same content or files whose content hash to the same value.
-    pub fn collisions(&self) -> HashMap<Id, Vec<IndexedResource<Id>>> {
+    pub fn collisions(&self) -> HashMap<Id, HashSet<PathBuf>> {
         // Filter out IDs with only one resource
-        self.id_to_resources
+        self.id_to_paths
             .iter()
-            .filter(|(_, resources)| resources.len() > 1)
-            .map(|(id, resources)| (id.clone(), resources.clone()))
+            .filter(|(_id, paths)| paths.len() > 1)
+            .map(|(id, paths)| (id.clone(), paths.clone()))
             .collect()
     }
 
@@ -185,10 +185,11 @@ impl<Id: ResourceId> ResourceIndex<Id> {
     /// non-cryptographic hash function, collisions can be files with the
     /// same content or files whose content hash to the same value.
     pub fn num_collisions(&self) -> usize {
-        self.id_to_resources
+        // Aggregate the number of collisions for each ID
+        self.id_to_paths
             .values()
-            .filter(|resources| resources.len() > 1)
-            .map(|resources| resources.len())
+            .filter(|paths| paths.len() > 1)
+            .map(|paths| paths.len())
             .sum()
     }
 
@@ -215,8 +216,13 @@ impl<Id: ResourceId> ResourceIndex<Id> {
     pub fn get_resources_by_id(
         &self,
         id: &Id,
-    ) -> Option<&Vec<IndexedResource<Id>>> {
-        self.id_to_resources.get(id)
+    ) -> Option<Vec<&IndexedResource<Id>>> {
+        let paths = self.id_to_paths.get(id)?;
+        let resources = paths
+            .iter()
+            .filter_map(|path| self.path_to_resource.get(path))
+            .collect();
+        Some(resources)
     }
 
     /// Get a resource by its path
@@ -237,7 +243,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
 
         // Canonicalize the root path
         let root = fs::canonicalize(&root_path)?;
-        let mut id_to_resources = HashMap::new();
+        let mut id_to_paths: HashMap<Id, HashSet<PathBuf>> = HashMap::new();
         let mut path_to_resource = HashMap::new();
 
         // Discover paths in the root directory
@@ -263,18 +269,18 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         // Update the path to resource map
         path_to_resource.extend(entries.clone());
 
-        // Update the ID to resources map
+        // Update the ID to paths map
         for resource in entries.values() {
             let id = resource.id().clone();
-            id_to_resources
+            id_to_paths
                 .entry(id)
-                .or_insert_with(Vec::new)
-                .push(resource.clone());
+                .or_default()
+                .insert(resource.path().to_path_buf());
         }
 
         let index = ResourceIndex {
             root,
-            id_to_resources,
+            id_to_paths,
             path_to_resource,
         };
         Ok(index)
@@ -402,14 +408,16 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             );
 
             self.path_to_resource.remove(&path);
-            self.id_to_resources
+            self.id_to_paths
                 .get_mut(resource.id())
                 .unwrap()
-                .retain(|r| r.path() != resource.path());
+                .remove(&path);
             let id = resource.id().clone();
-            let resources = self.id_to_resources.get_mut(&id).unwrap();
-            resources.retain(|r| r.path() != resource.path());
-            removed.insert(id);
+            // Only remove the ID if it has no paths
+            if self.id_to_paths[&id].is_empty() {
+                self.id_to_paths.remove(&id);
+                removed.insert(id);
+            }
         }
 
         let added_entries: HashMap<PathBuf, IndexedResource<Id>> =
@@ -442,10 +450,10 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             self.path_to_resource
                 .insert(relative_path.clone(), resource.clone());
             let id = resource.id().clone();
-            self.id_to_resources
+            self.id_to_paths
                 .entry(id.clone())
                 .or_default()
-                .push(resource.clone());
+                .insert(relative_path.clone());
             added.insert(id, resource);
         }
 

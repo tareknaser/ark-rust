@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::PathBuf, time::SystemTime};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    time::SystemTime,
+};
 
 use anyhow::Result;
 use serde::{
@@ -79,7 +83,7 @@ where
             ResourceIndexData::deserialize(deserializer)?;
 
         let mut path_to_resource = HashMap::new();
-        let mut id_to_resources = HashMap::new();
+        let mut id_to_paths = HashMap::new();
         for (path, resource_data) in index_data.resources {
             let last_modified = SystemTime::UNIX_EPOCH
                 + std::time::Duration::from_nanos(resource_data.last_modified);
@@ -88,16 +92,16 @@ where
                 path.clone(),
                 last_modified,
             );
-            path_to_resource.insert(path, resource.clone());
-            id_to_resources
+            path_to_resource.insert(path.clone(), resource.clone());
+            id_to_paths
                 .entry(resource.id().clone())
-                .or_insert_with(Vec::new)
-                .push(resource);
+                .or_insert_with(HashSet::new)
+                .insert(path);
         }
 
         Ok(ResourceIndex {
             root: index_data.root,
-            id_to_resources,
+            id_to_paths,
             path_to_resource,
         })
     }
