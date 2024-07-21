@@ -9,7 +9,7 @@
 //!
 //! - **Macros**:
 //!  - `for_each_hash!`: A macro that takes a list of hash function types and a
-//!   block of code to execute for each hash type.
+//!    block of code to execute for each hash type.
 //!
 //! - **Test Functions**:
 //!   - Defined to test various aspects of `ResourceIndex`, parameterized by
@@ -174,7 +174,7 @@ fn test_build_index_with_file() {
             .get_resource_by_path("file.txt")
             .expect("Failed to get resource");
         assert_eq!(
-            resource, &expected_resource,
+            resource, expected_resource,
             "{:?} != {:?}",
             resource, expected_resource
         );
@@ -238,7 +238,7 @@ fn test_build_index_with_directory() {
             .get_resource_by_path("dir/file.txt")
             .expect("Failed to get resource");
         assert_eq!(
-            resource, &expected_resource,
+            resource, expected_resource,
             "{:?} != {:?}",
             resource, expected_resource
         );
@@ -279,12 +279,12 @@ fn test_build_index_with_multiple_files() {
         let resource = index
             .get_resource_by_path("file1.txt")
             .expect("Failed to get resource");
-        assert_eq!(resource, &expected_resource1, "{:?}", resource);
+        assert_eq!(resource, expected_resource1, "{:?}", resource);
 
         let resource = index
             .get_resource_by_path("file2.txt")
             .expect("Failed to get resource");
-        assert_eq!(resource, &expected_resource2, "{:?}", resource);
+        assert_eq!(resource, expected_resource2, "{:?}", resource);
     });
 }
 
@@ -328,12 +328,12 @@ fn test_build_index_with_multiple_directories() {
         let resource = index
             .get_resource_by_path("dir1/file1.txt")
             .expect("Resource not found");
-        assert_eq!(resource, &expected_resource1, "{:?}", resource);
+        assert_eq!(resource, expected_resource1, "{:?}", resource);
 
         let resource = index
             .get_resource_by_path("dir2/file2.txt")
             .expect("Resource not found");
-        assert_eq!(resource, &expected_resource2, "{:?}", resource);
+        assert_eq!(resource, expected_resource2, "{:?}", resource);
     });
 }
 
@@ -391,7 +391,7 @@ fn test_resource_index_update() {
         let expected_resource =
             get_indexed_resource_from_file(&file_path, &root_path.to_path_buf())
                 .expect("Failed to get indexed resource");
-        assert_eq!(resource, &expected_resource, "{:?}", resource);
+        assert_eq!(resource, expected_resource, "{:?}", resource);
 
         let _resource = index
             .get_resource_by_path("new_file.txt")

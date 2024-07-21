@@ -12,7 +12,7 @@ use serde::{
 
 use data_resource::ResourceId;
 
-use crate::{index::IndexedResource, ResourceIndex};
+use crate::{index::IndexEntry, ResourceIndex};
 
 /// Data structure for serializing and deserializing the index
 #[derive(Serialize, Deserialize)]
@@ -46,9 +46,9 @@ where
 
         let mut resources = HashMap::new();
         for (path, resource) in &self.path_to_resource {
-            let id = resource.id().clone();
+            let id = resource.id.clone();
             let last_modified = resource
-                .last_modified()
+                .last_modified
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .map_err(|e| {
                     serde::ser::Error::custom(format!(
@@ -87,14 +87,13 @@ where
         for (path, resource_data) in index_data.resources {
             let last_modified = SystemTime::UNIX_EPOCH
                 + std::time::Duration::from_nanos(resource_data.last_modified);
-            let resource = IndexedResource::new(
-                resource_data.id,
-                path.clone(),
+            let resource = IndexEntry {
+                id: resource_data.id,
                 last_modified,
-            );
+            };
             path_to_resource.insert(path.clone(), resource.clone());
             id_to_paths
-                .entry(resource.id().clone())
+                .entry(resource.id.clone())
                 .or_insert_with(HashSet::new)
                 .insert(path);
         }
