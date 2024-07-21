@@ -1117,4 +1117,111 @@ mod tests {
         println!("Number of collisions: {}", index.collisions.len());
         println!("Time taken: {:?}", elapsed_time);
     }
+    // Failing tests for debugging
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Test the `ResourceIndex::update_all` method on a directory with added
+    /// files.
+    #[test]
+    fn test_update_all_added_files() {
+        let temp_dir = TempDir::with_prefix("ark_test_added_files")
+            .expect("Failed to create temp dir");
+        let root_path = temp_dir.path();
+
+        let file_path = root_path.join("file.txt");
+        fs::write(&file_path, "file content").expect("Failed to write to file");
+
+        let mut index: ResourceIndex<Crc32> = ResourceIndex::build(root_path);
+
+        let new_file_path = root_path.join("new_file.txt");
+        fs::write(&new_file_path, "new file content")
+            .expect("Failed to write to file");
+
+        let update_result = index
+            .update_all()
+            .expect("Failed to update index");
+        // - Since only one file was added, the update result should contain
+        //   only one added file
+        // - The other file shouldn't be included in the update result since it
+        //   was already indexed
+        assert_eq!(update_result.added.len(), 1, "{:?}", update_result);
+    }
+
+    /// Test updating the resource index.
+    ///
+    /// ## Test scenario:
+    /// - Create files within the temporary directory.
+    /// - Build a resource index in the temporary directory.
+    /// - Assert that the index initially contains the expected number of
+    ///   entries.
+    /// - Create a new file, modify an existing file, and remove another file.
+    /// - Update the resource index.
+    /// - Assert that the index contains the expected number of entries after
+    ///   the update.
+    /// - Assert that the entries in the index match the expected state after
+    ///   the update.
+    #[test]
+    fn update_all() {
+        let temp_dir = TempDir::with_prefix("ark_test_resource_index_update")
+            .expect("Failed to create temp dir");
+        let root_path = temp_dir.path();
+
+        let file_path = root_path.join("file.txt");
+        let canonical_file_path = CanonicalPathBuf::canonicalize(&file_path)
+            .expect("Failed to canonicalize path");
+        fs::write(&file_path, "file content").expect("Failed to write to file");
+
+        let image_path = root_path.join("image.png");
+        fs::write(&image_path, "image content")
+            .expect("Failed to write to file");
+
+        let mut index: ResourceIndex<Crc32> = ResourceIndex::build(root_path);
+        index.store().expect("Failed to store index");
+        assert_eq!(
+            index.path2id.len(),
+            2,
+            "Index should contain 2 resources: {:?}",
+            index
+        );
+
+        // create new file
+        let new_file_path = root_path.join("new_file.txt");
+        let canonical_new_file_path =
+            CanonicalPathBuf::canonicalize(&new_file_path)
+                .expect("Failed to canonicalize path");
+        fs::write(&new_file_path, "new file content")
+            .expect("Failed to write to file");
+
+        // modify file
+        fs::write(&file_path, "updated file content")
+            .expect("Failed to write to file");
+
+        // remove file
+        fs::remove_file(&image_path).expect("Failed to remove file");
+
+        index
+            .update_all()
+            .expect("Failed to update index");
+        // Index now contains 2 resources (file.txt and new_file.txt)
+        assert_eq!(index.path2id.len(), 2, "{:?}", index);
+
+        let _resource = index
+            .path2id
+            .get(&canonical_file_path)
+            .expect("Resource not found");
+
+        let _resource = index
+            .path2id
+            .get(&canonical_new_file_path)
+            .expect("Resource not found");
+
+        assert!(
+            index
+                .path2id
+                .contains_key(&canonical_new_file_path),
+            "{:?}",
+            index
+        );
+    }
 }
