@@ -8,7 +8,7 @@
 //! # Structure
 //!
 //! - **Macros**:
-//!  - `for_each_hash!`: A macro that takes a list of hash function types and a
+//!  - `for_each_type!`: A macro that takes a list of hash function types and a
 //!    block of code to execute for each hash type.
 //!
 //! - **Test Functions**:
@@ -24,7 +24,7 @@
 //! To add a new test for a specific hash type:
 //! 1. Write a block of code generic over the hash type (a Type implementing
 //!    ResourceId trait).
-//! 2. Use the `for_each_hash!` macro to execute the block of code for each
+//! 2. Use the `for_each_type!` macro to execute the block of code for each
 //!    desired hash type.
 
 use dev_hash::{Blake3, Crc32};
@@ -42,11 +42,11 @@ use crate::{
 /// A macro that takes a list of hash function types and a block of code to
 /// execute for each hash type.
 #[macro_export]
-macro_rules! for_each_hash {
+macro_rules! for_each_type {
     ($($hash_type:ty),+ => $body:block) => {
         $(
             {
-                type H = $hash_type;
+                type Id = $hash_type;
                 $body
             }
         )+
@@ -54,11 +54,11 @@ macro_rules! for_each_hash {
 }
 
 /// A helper function to get [`IndexedResource`] from a file path
-fn get_indexed_resource_from_file<H: ResourceId, P: AsRef<Path>>(
+fn get_indexed_resource_from_file<Id: ResourceId, P: AsRef<Path>>(
     path: P,
     parent_dir: P,
-) -> Result<IndexedResource<H>> {
-    let id = H::from_path(&path)?;
+) -> Result<IndexedResource<Id>> {
+    let id = Id::from_path(&path)?;
 
     let relative_path = path
         .as_ref()
@@ -81,7 +81,7 @@ fn get_indexed_resource_from_file<H: ResourceId, P: AsRef<Path>>(
 /// - Assert that the loaded index matches the original index.
 #[test]
 fn test_store_and_load_index() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir = TempDir::with_prefix("ark_test_store_and_load_index")
             .expect("Failed to create temp dir");
         let root_path = temp_dir.path();
@@ -89,7 +89,7 @@ fn test_store_and_load_index() {
         let file_path = root_path.join("file.txt");
         fs::write(&file_path, "file content").expect("Failed to write to file");
 
-        let index: ResourceIndex<H> =
+        let index: ResourceIndex<Id> =
             ResourceIndex::build(root_path).expect("Failed to build index");
         assert_eq!(index.len(), 1, "{:?}", index);
         index.store().expect("Failed to store index");
@@ -111,7 +111,7 @@ fn test_store_and_load_index() {
 /// - Assert that the loaded index matches the original index.
 #[test]
 fn test_store_and_load_index_with_collisions() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir =
             TempDir::with_prefix("ark_test_store_and_load_index_with_collisions")
                 .expect("Failed to create temp dir");
@@ -131,9 +131,9 @@ fn test_store_and_load_index_with_collisions() {
 
         // Now we have 4 files with the same content (same checksum)
 
-        let index: ResourceIndex<H> =
+        let index: ResourceIndex<Id> =
             ResourceIndex::build(root_path).expect("Failed to build index");
-        let checksum = H::from_path(&file_path).expect("Failed to get checksum");
+        let checksum = Id::from_path(&file_path).expect("Failed to get checksum");
         assert_eq!(index.len(), 4, "{:?}", index);
         assert_eq!(index.collisions().len(), 1, "{:?}", index);
         assert_eq!(index.collisions()[&checksum].len(), 4, "{:?}", index);
@@ -156,14 +156,14 @@ fn test_store_and_load_index_with_collisions() {
 /// - Assert that the resource retrieved by ID matches the expected resource.
 #[test]
 fn test_build_index_with_file() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir = TempDir::with_prefix("ark_test_build_index_with_file")
             .expect("Failed to create temp dir");
         let root_path = temp_dir.path();
 
         let file_path = root_path.join("file.txt");
         fs::write(&file_path, "file content").expect("Failed to write to file");
-        let expected_resource: IndexedResource<H> =
+        let expected_resource: IndexedResource<Id> =
             get_indexed_resource_from_file(&file_path, &root_path.to_path_buf())
                 .expect("Failed to get indexed resource");
 
@@ -190,7 +190,7 @@ fn test_build_index_with_file() {
 /// - Assert that the index contains one entries.
 #[test]
 fn test_build_index_with_empty_file() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir = TempDir::with_prefix("ark_test_build_index_with_empty_file")
             .expect("Failed to create temp dir");
         let root_path = temp_dir.path();
@@ -201,7 +201,7 @@ fn test_build_index_with_empty_file() {
         let file_path = root_path.join("file.txt");
         fs::write(&file_path, "file content").expect("Failed to write to file");
 
-        let index: ResourceIndex<H> =
+        let index: ResourceIndex<Id> =
             ResourceIndex::build(root_path).expect("Failed to build index");
         assert_eq!(index.len(), 1, "{:?}", index);
     });
@@ -218,7 +218,7 @@ fn test_build_index_with_empty_file() {
 /// - Assert that the resource retrieved by ID matches the expected resource.
 #[test]
 fn test_build_index_with_directory() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir = TempDir::with_prefix("ark_test_build_index_with_directory")
             .expect("Failed to create temp dir");
         let root_path = temp_dir.path();
@@ -227,7 +227,7 @@ fn test_build_index_with_directory() {
         fs::create_dir(&dir_path).expect("Failed to create dir");
         let file_path = dir_path.join("file.txt");
         fs::write(&file_path, "file content").expect("Failed to write to file");
-        let expected_resource: IndexedResource<H> =
+        let expected_resource: IndexedResource<Id> =
             get_indexed_resource_from_file(&file_path, &root_path.to_path_buf())
                 .expect("Failed to get indexed resource");
 
@@ -255,7 +255,7 @@ fn test_build_index_with_directory() {
 ///   expected resource.
 #[test]
 fn test_build_index_with_multiple_files() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir =
             TempDir::with_prefix("ark_test_build_index_with_multiple_files")
                 .expect("Failed to create temp dir");
@@ -266,7 +266,7 @@ fn test_build_index_with_multiple_files() {
         let file2_path = root_path.join("file2.txt");
         fs::write(&file2_path, "file2 content").expect("Failed to write to file");
 
-        let expected_resource1: IndexedResource<H> =
+        let expected_resource1: IndexedResource<Id> =
             get_indexed_resource_from_file(&file1_path, &root_path.to_path_buf())
                 .expect("Failed to get indexed resource");
         let expected_resource2 =
@@ -299,7 +299,7 @@ fn test_build_index_with_multiple_files() {
 ///   expected resources.
 #[test]
 fn test_build_index_with_multiple_directories() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir =
             TempDir::with_prefix("ark_test_build_index_with_multiple_directories")
                 .expect("Failed to create temp dir");
@@ -315,7 +315,7 @@ fn test_build_index_with_multiple_directories() {
         let file2_path = dir2_path.join("file2.txt");
         fs::write(&file2_path, "file2 content").expect("Failed to write to file");
 
-        let expected_resource1: IndexedResource<H> =
+        let expected_resource1: IndexedResource<Id> =
             get_indexed_resource_from_file(&file1_path, &root_path.to_path_buf())
                 .expect("Failed to get indexed resource");
         let expected_resource2 =
@@ -351,7 +351,7 @@ fn test_build_index_with_multiple_directories() {
 ///   update.
 #[test]
 fn test_resource_index_update() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir = TempDir::with_prefix("ark_test_resource_index_update")
             .expect("Failed to create temp dir");
         let root_path = temp_dir.path();
@@ -362,7 +362,7 @@ fn test_resource_index_update() {
         let image_path = root_path.join("image.png");
         fs::write(&image_path, "image content").expect("Failed to write to file");
 
-        let mut index: ResourceIndex<H> =
+        let mut index: ResourceIndex<Id> =
             ResourceIndex::build(root_path).expect("Failed to build index");
         index.store().expect("Failed to store index");
         assert_eq!(index.len(), 2, "{:?}", index);
@@ -418,7 +418,7 @@ fn test_resource_index_update() {
 /// - Assert index.collisions contains the expected number of entries.
 #[test]
 fn test_add_colliding_files() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir = TempDir::with_prefix("ark_test_add_colliding_files")
             .expect("Failed to create temp dir");
         let root_path = temp_dir.path();
@@ -426,7 +426,7 @@ fn test_add_colliding_files() {
         let file_path = root_path.join("file.txt");
         fs::write(&file_path, "file content").expect("Failed to write to file");
 
-        let mut index: ResourceIndex<H> =
+        let mut index: ResourceIndex<Id> =
             ResourceIndex::build(root_path).expect("Failed to build index");
         index.store().expect("Failed to store index");
         assert_eq!(index.len(), 1, "{:?}", index);
@@ -455,7 +455,7 @@ fn test_add_colliding_files() {
 ///   update.
 #[test]
 fn test_num_collisions() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir = TempDir::with_prefix("ark_test_num_collisions")
             .expect("Failed to create temp dir");
         let root_path = temp_dir.path();
@@ -463,7 +463,7 @@ fn test_num_collisions() {
         let file_path = root_path.join("file.txt");
         fs::write(&file_path, "file content").expect("Failed to write to file");
 
-        let mut index: ResourceIndex<H> =
+        let mut index: ResourceIndex<Id> =
             ResourceIndex::build(root_path).expect("Failed to build index");
         index.store().expect("Failed to store index");
         assert_eq!(index.len(), 1, "{:?}", index);
@@ -493,7 +493,7 @@ fn test_num_collisions() {
 ///   (0)
 #[test]
 fn test_hidden_files() {
-    for_each_hash!(Crc32, Blake3 => {
+    for_each_type!(Crc32, Blake3 => {
         let temp_dir = TempDir::with_prefix("ark_test_hidden_files")
             .expect("Failed to create temp dir");
         let root_path = temp_dir.path();
@@ -501,7 +501,7 @@ fn test_hidden_files() {
         let file_path = root_path.join(".hidden_file.txt");
         fs::write(&file_path, "file content").expect("Failed to write to file");
 
-        let index: ResourceIndex<H> =
+        let index: ResourceIndex<Id> =
             ResourceIndex::build(root_path).expect("Failed to build index");
         index.store().expect("Failed to store index");
         assert_eq!(index.len(), 0, "{:?}", index);
