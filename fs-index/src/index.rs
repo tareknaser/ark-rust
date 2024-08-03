@@ -279,14 +279,12 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         // Discover paths in the root directory
         let paths = discover_paths(&root)?;
         let entries: HashMap<PathBuf, IndexedResource<Id>> =
-            scan_entries(paths);
+            scan_entries(&root, paths);
 
         // Strip the root path from the entries
         let entries: HashMap<PathBuf, IndexEntry<Id>> = entries
             .into_iter()
             .map(|(path, resource)| {
-                let relative_path =
-                    path.strip_prefix(&root).unwrap().to_path_buf();
                 let resource = IndexEntry {
                     id: resource.id().clone(),
                     last_modified: resource.last_modified(),
@@ -296,9 +294,9 @@ impl<Id: ResourceId> ResourceIndex<Id> {
                 id_to_paths
                     .entry(resource.id.clone())
                     .or_default()
-                    .insert(relative_path.clone());
+                    .insert(path.clone());
 
-                (relative_path, resource)
+                (path, resource)
             })
             .collect();
 
@@ -326,7 +324,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         // Assuming that collection manipulation is faster than repeated
         // lookups
         let current_entries: HashMap<PathBuf, IndexedResource<Id>> =
-            scan_entries(current_paths.clone());
+            scan_entries(self.root(), current_paths);
         let previous_entries = self.path_to_resource.clone();
         // `preserved_entries` is the intersection of current_entries and
         // previous_entries
@@ -462,29 +460,17 @@ impl<Id: ResourceId> ResourceIndex<Id> {
 
         for (path, resource) in added_entries {
             log::trace!("Resource added: {:?}", path);
-
-            // strip the root path from the path
-            let relative_path = path
-                .strip_prefix(&self.root)
-                .unwrap()
-                .to_path_buf();
-            let resource = IndexedResource::new(
-                resource.id().clone(),
-                relative_path.clone(),
-                resource.last_modified(),
-            );
             let index_entry_resource = IndexEntry {
                 id: resource.id().clone(),
                 last_modified: resource.last_modified(),
             };
-
             self.path_to_resource
-                .insert(relative_path.clone(), index_entry_resource.clone());
+                .insert(path.clone(), index_entry_resource.clone());
             let id = resource.id.clone();
             self.id_to_paths
                 .entry(id.clone())
                 .or_default()
-                .insert(relative_path.clone());
+                .insert(path.clone());
             added.insert(id, resource);
         }
 

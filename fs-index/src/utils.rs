@@ -99,27 +99,37 @@ pub(crate) fn discover_paths<P: AsRef<Path>>(
 }
 
 /// A helper function to scan entries and create indexed resources
-pub(crate) fn scan_entries<Id: ResourceId>(
+pub(crate) fn scan_entries<P: AsRef<Path>, Id: ResourceId>(
+    root_path: P,
     paths: Vec<DirEntry>,
 ) -> HashMap<PathBuf, IndexedResource<Id>> {
     let mut path_to_resource = HashMap::new();
     for entry in paths {
-        let resource = scan_entry(entry);
+        let resource = scan_entry(root_path.as_ref(), entry);
         path_to_resource.insert(resource.path().to_path_buf(), resource);
     }
     path_to_resource
 }
 
 /// A helper function to scan one entry and create an indexed resource
-pub(crate) fn scan_entry<Id: ResourceId>(
+pub(crate) fn scan_entry<P: AsRef<Path>, Id: ResourceId>(
+    root_path: P,
     entry: DirEntry,
 ) -> IndexedResource<Id> {
     let path = entry.path().to_path_buf();
-    let metadata = entry.metadata().unwrap();
-    let last_modified = metadata.modified().unwrap();
+    // Strip the root path from the entry path
+    let path = path
+        .strip_prefix(root_path.as_ref())
+        .expect("Failed to strip prefix");
+    let path = path.to_path_buf();
+
+    let metadata = entry.metadata().expect("Failed to get metadata");
+    let last_modified = metadata
+        .modified()
+        .expect("Failed to get modified");
 
     // Get the ID of the resource
-    let id = Id::from_path(&path).unwrap();
+    let id = Id::from_path(entry.path()).expect("Failed to get ID from path");
 
     // Create the indexed resource
     IndexedResource::new(id, path, last_modified)
