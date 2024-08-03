@@ -507,3 +507,96 @@ fn test_hidden_files() {
         assert_eq!(index.len(), 0, "{:?}", index);
     });
 }
+
+/// Test that we detect added files in `update_all`.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Create a new file.
+/// - Update the resource index.
+/// - Assert that the return from `update_all` is that `added` includes the
+///  new file.
+#[test]
+fn test_update_all_added_files() {
+    for_each_type!(Crc32, Blake3 => {
+        let temp_dir = TempDir::with_prefix("ark_test_added_files")
+            .expect("Failed to create temp dir");
+        let root_path = temp_dir.path();
+
+        let file_path = root_path.join("file.txt");
+        fs::write(&file_path, "file content").expect("Failed to write to file");
+
+        let mut index: ResourceIndex<Id> =
+            ResourceIndex::build(root_path).expect("Failed to build index");
+
+        let new_file_path = root_path.join("new_file.txt");
+        fs::write(&new_file_path, "new file content")
+            .expect("Failed to write to file");
+
+        let update_result = index.update_all().expect("Failed to update index");
+        assert_eq!(update_result.added().len(), 1, "{:?}", update_result);
+    });
+}
+
+/// Test that we detect updated files using the last modified time.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Sleep for a second to ensure the last modified time is different.
+/// - Update the file.
+/// - Update the resource index.
+/// - Assert that the return from `update_all` is that `added` includes the
+///  updated file.
+#[test]
+fn test_update_all_updated_files() {
+    for_each_type!(Crc32, Blake3 => {
+        let temp_dir = TempDir::with_prefix("ark_test_updated_files")
+            .expect("Failed to create temp dir");
+        let root_path = temp_dir.path();
+
+        let file_path = root_path.join("file.txt");
+        fs::write(&file_path, "file content").expect("Failed to write to file");
+
+        let mut index: ResourceIndex<Id> =
+            ResourceIndex::build(root_path).expect("Failed to build index");
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        fs::write(&file_path, "updated file content")
+            .expect("Failed to write to file");
+
+        let update_result = index.update_all().expect("Failed to update index");
+        assert_eq!(update_result.added().len(), 1, "{:?}", update_result);
+    });
+}
+
+/// Test that we detect deleted files in `update_all`.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Remove the file.
+/// - Update the resource index.
+/// - Assert that the return from `update_all` is that `removed` includes the
+///   deleted file.
+#[test]
+fn test_update_all_deleted_files() {
+    for_each_type!(Crc32, Blake3 => {
+        let temp_dir = TempDir::with_prefix("ark_test_deleted_files")
+            .expect("Failed to create temp dir");
+        let root_path = temp_dir.path();
+
+        let file_path = root_path.join("file.txt");
+        fs::write(&file_path, "file content").expect("Failed to write to file");
+
+        let mut index: ResourceIndex<Id> =
+            ResourceIndex::build(root_path).expect("Failed to build index");
+
+        fs::remove_file(&file_path).expect("Failed to remove file");
+
+        let update_result = index.update_all().expect("Failed to update index");
+        assert_eq!(update_result.removed().len(), 1, "{:?}", update_result);
+    });
+}
