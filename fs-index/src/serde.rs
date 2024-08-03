@@ -12,7 +12,7 @@ use serde::{
 
 use data_resource::ResourceId;
 
-use crate::{index::IndexEntry, ResourceIndex};
+use crate::{index::ResourceIdWithTimestamp, ResourceIndex};
 
 /// Data structure for serializing and deserializing the index
 #[derive(Serialize, Deserialize)]
@@ -87,7 +87,7 @@ where
         for (path, resource_data) in index_data.resources {
             let last_modified = SystemTime::UNIX_EPOCH
                 + std::time::Duration::from_nanos(resource_data.last_modified);
-            let resource = IndexEntry {
+            let resource = ResourceIdWithTimestamp {
                 id: resource_data.id,
                 last_modified,
             };
