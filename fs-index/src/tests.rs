@@ -600,3 +600,50 @@ fn test_update_all_deleted_files() {
         assert_eq!(update_result.removed().len(), 1, "{:?}", update_result);
     });
 }
+
+/// Test that we detect files with the same hash but different content in
+/// `update_all`.
+///
+/// ## Test scenario:
+/// - Create a file within the temporary directory.
+/// - Build a resource index in the temporary directory.
+/// - Modify the file.
+/// - Create a new file with the same content but different name (path).
+/// - Update the resource index.
+/// - Assert that the return from `update_all` is that `added` includes both
+///   files.
+#[test]
+fn test_update_all_files_with_same_hash() {
+    for_each_type!(Crc32, Blake3 => {
+        let temp_dir = TempDir::with_prefix("ark_test_files_with_same_hash")
+            .expect("Failed to create temp dir");
+        let root_path = temp_dir.path();
+
+        let file_path = root_path.join("file.txt");
+        fs::write(&file_path, "file content").expect("Failed to write to file");
+
+        let mut index: ResourceIndex<Id> =
+            ResourceIndex::build(root_path).expect("Failed to build index");
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        fs::write(&file_path, "updated file content")
+            .expect("Failed to write to file");
+
+        let new_file_path = root_path.join("new_file.txt");
+        fs::write(&new_file_path, "updated file content")
+            .expect("Failed to write to file");
+
+        let update_result = index.update_all().expect("Failed to update index");
+        // The lentgh of `added` should be 1 because the new file has the same
+        // content as the updated file.
+        assert_eq!(update_result.added().len(), 1, "{:?}", update_result);
+
+        // The length of `added`'s first element should be 2
+        assert_eq!(update_result.added().values().next().unwrap().len(), 2);
+
+        // The length of `collisions` should be 1 because the new file has the
+        // same content as the updated file.
+        assert_eq!(index.collisions().len(), 1, "{:?}", index);
+    });
+}

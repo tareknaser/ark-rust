@@ -11,7 +11,7 @@ use data_error::{ArklibError, Result};
 use data_resource::ResourceId;
 use fs_storage::{ARK_FOLDER, INDEX_PATH};
 
-use crate::{index::IndexedResource, ResourceIndex};
+use crate::{index::ResourceIdWithTimestamp, ResourceIndex};
 
 /// Load the index from the file system
 fn load_index<P: AsRef<Path>, Id: ResourceId>(
@@ -102,27 +102,27 @@ pub(crate) fn discover_paths<P: AsRef<Path>>(
 pub(crate) fn scan_entries<P: AsRef<Path>, Id: ResourceId>(
     root_path: P,
     paths: Vec<DirEntry>,
-) -> HashMap<PathBuf, IndexedResource<Id>> {
+) -> HashMap<PathBuf, ResourceIdWithTimestamp<Id>> {
     let mut path_to_resource = HashMap::new();
     for entry in paths {
-        let resource = scan_entry(root_path.as_ref(), entry);
-        path_to_resource.insert(resource.path().to_path_buf(), resource);
+        let resource = scan_entry(entry.clone());
+
+        let path = entry.path().to_path_buf();
+        // Strip the root path from the entry path
+        let path = path
+            .strip_prefix(root_path.as_ref())
+            .expect("Failed to strip prefix");
+        let path = path.to_path_buf();
+
+        path_to_resource.insert(path, resource);
     }
     path_to_resource
 }
 
 /// A helper function to scan one entry and create an indexed resource
-pub(crate) fn scan_entry<P: AsRef<Path>, Id: ResourceId>(
-    root_path: P,
+pub(crate) fn scan_entry<Id: ResourceId>(
     entry: DirEntry,
-) -> IndexedResource<Id> {
-    let path = entry.path().to_path_buf();
-    // Strip the root path from the entry path
-    let path = path
-        .strip_prefix(root_path.as_ref())
-        .expect("Failed to strip prefix");
-    let path = path.to_path_buf();
-
+) -> ResourceIdWithTimestamp<Id> {
     let metadata = entry.metadata().expect("Failed to get metadata");
     let last_modified = metadata
         .modified()
@@ -131,8 +131,7 @@ pub(crate) fn scan_entry<P: AsRef<Path>, Id: ResourceId>(
     // Get the ID of the resource
     let id = Id::from_path(entry.path()).expect("Failed to get ID from path");
 
-    // Create the indexed resource
-    IndexedResource::new(id, path, last_modified)
+    ResourceIdWithTimestamp { id, last_modified }
 }
 
 /// A helper function to check if the entry should be indexed (not hidden or
