@@ -364,6 +364,7 @@ fn test_resource_index_update() {
 
         let mut index: ResourceIndex<Id> =
             ResourceIndex::build(root_path).expect("Failed to build index");
+        std::thread::sleep(std::time::Duration::from_secs(1));
         index.store().expect("Failed to store index");
         assert_eq!(index.len(), 2, "{:?}", index);
 
