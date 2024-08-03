@@ -239,8 +239,6 @@ fn test_build_index_with_directory() {
             .expect("Failed to get resource");
         assert_eq!(
             resource, expected_resource,
-            "{:?} != {:?}",
-            resource, expected_resource
         );
     });
 }

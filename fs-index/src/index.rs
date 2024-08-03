@@ -281,15 +281,20 @@ impl<Id: ResourceId> ResourceIndex<Id> {
     pub fn build<P: AsRef<Path>>(root_path: P) -> Result<Self> {
         log::debug!("Building index at root path: {:?}", root_path.as_ref());
 
-        // Canonicalize the root path
-        let root = fs::canonicalize(&root_path)?;
+        let root_path = root_path.as_ref();
+        // Canonicalize the root path (only for unix-like systems)
+        // Note: On windows, canonicalization adds a prefix to the path
+        // which breaks the path comparison in the tests
+        #[cfg(target_family = "unix")]
+        let root_path = root_path.canonicalize()?;
+
         let mut id_to_paths: HashMap<Id, HashSet<PathBuf>> = HashMap::new();
         let mut path_to_resource = HashMap::new();
 
         // Discover paths in the root directory
-        let paths = discover_paths(&root)?;
+        let paths = discover_paths(&root_path)?;
         let entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> =
-            scan_entries(&root, paths);
+            scan_entries(&root_path, paths);
 
         // Strip the root path from the entries
         let entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> = entries
@@ -309,7 +314,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         path_to_resource.extend(entries.clone());
 
         let index = ResourceIndex {
-            root,
+            root: root_path.to_path_buf(),
             id_to_paths,
             path_to_resource,
         };
