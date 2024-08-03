@@ -456,7 +456,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         let added_entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> =
             created_entries
                 .into_iter()
-                .chain(updated_entries.into_iter())
+                .chain(updated_entries)
                 .collect();
 
         for (path, resource) in added_entries {
