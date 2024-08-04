@@ -56,23 +56,16 @@ impl<Id> IndexedResource<Id> {
     }
 }
 
-/// Represents a resource ID with its last modified time
+/// Represents an item with its last modified time
 #[derive(Eq, Ord, PartialEq, PartialOrd, Hash, Clone, Debug)]
-pub struct ResourceIdWithTimestamp<Id> {
+pub struct Timestamped<Item> {
     /// The unique identifier of the resource
-    pub(crate) id: Id,
+    pub(crate) item: Item,
     /// The last modified time of the resource (from the file system metadata)
     pub(crate) last_modified: SystemTime,
 }
 
-/// Represents a resource path with its last modified time
-#[derive(Eq, Ord, PartialEq, PartialOrd, Hash, Clone, Debug)]
-pub struct ResourcePathWithTimestamp {
-    /// The path of the resource, relative to the root path
-    pub(crate) path: PathBuf,
-    /// The last modified time of the resource (from the file system metadata)
-    pub(crate) last_modified: SystemTime,
-}
+type IndexedPaths = HashSet<Timestamped<PathBuf>>;
 
 /// Represents the index of resources in a directory.
 ///
@@ -135,21 +128,21 @@ where
     /// or files with the same content)
     pub(crate) id_to_paths: HashMap<Id, HashSet<PathBuf>>,
     /// A map from resource paths to resources
-    pub(crate) path_to_resource: HashMap<PathBuf, ResourceIdWithTimestamp<Id>>,
+    pub(crate) path_to_id: HashMap<PathBuf, Timestamped<Id>>,
 }
 
 /// Represents the result of an update operation on the ResourceIndex
 #[derive(PartialEq, Debug)]
 pub struct IndexUpdate<Id: ResourceId> {
     /// Resources that were added during the update
-    added: HashMap<Id, HashSet<ResourcePathWithTimestamp>>,
+    added: HashMap<Id, IndexedPaths>,
     /// Resources that were removed during the update
     removed: HashSet<Id>,
 }
 
 impl<Id: ResourceId> IndexUpdate<Id> {
     /// Return the resources that were added during the update
-    pub fn added(&self) -> &HashMap<Id, HashSet<ResourcePathWithTimestamp>> {
+    pub fn added(&self) -> &HashMap<Id, IndexedPaths> {
         &self.added
     }
 
@@ -162,12 +155,12 @@ impl<Id: ResourceId> IndexUpdate<Id> {
 impl<Id: ResourceId> ResourceIndex<Id> {
     /// Return the number of resources in the index
     pub fn len(&self) -> usize {
-        self.path_to_resource.len()
+        self.path_to_id.len()
     }
 
     /// Return true if the index is empty
     pub fn is_empty(&self) -> bool {
-        self.path_to_resource.is_empty()
+        self.path_to_id.is_empty()
     }
 
     /// Return the root path of the index
@@ -179,11 +172,11 @@ impl<Id: ResourceId> ResourceIndex<Id> {
     pub fn resources(&self) -> Vec<IndexedResource<Id>> {
         // Using path_to_resource so to avoid not collecting duplicates
         let mut resources = vec![];
-        for (path, resource) in self.path_to_resource.iter() {
+        for (path, id) in self.path_to_id.iter() {
             resources.push(IndexedResource::new(
-                resource.id.clone(),
+                id.item.clone(),
                 path.clone(),
-                resource.last_modified,
+                id.last_modified,
             ));
         }
         resources
@@ -247,11 +240,11 @@ impl<Id: ResourceId> ResourceIndex<Id> {
 
         let paths = self.id_to_paths.get(id)?;
         for path in paths {
-            let resource = self.path_to_resource.get(path)?;
+            let id = self.path_to_id.get(path)?;
             let resource = IndexedResource::new(
-                resource.id.clone(),
+                id.item.clone(),
                 path.clone(),
-                resource.last_modified,
+                id.last_modified,
             );
             resources.push(resource);
         }
@@ -268,11 +261,11 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         &self,
         path: P,
     ) -> Option<IndexedResource<Id>> {
-        let resource = self.path_to_resource.get(path.as_ref())?;
+        let id = self.path_to_id.get(path.as_ref())?;
         let resource = IndexedResource::new(
-            resource.id.clone(),
+            id.item.clone(),
             path.as_ref().to_path_buf(),
-            resource.last_modified,
+            id.last_modified,
         );
         Some(resource)
     }
@@ -293,20 +286,20 @@ impl<Id: ResourceId> ResourceIndex<Id> {
 
         // Discover paths in the root directory
         let paths = discover_paths(&root_path)?;
-        let entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> =
+        let entries: HashMap<PathBuf, Timestamped<Id>> =
             scan_entries(&root_path, paths);
 
         // Strip the root path from the entries
-        let entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> = entries
+        let entries: HashMap<PathBuf, Timestamped<Id>> = entries
             .into_iter()
-            .map(|(path, resource)| {
+            .map(|(path, id)| {
                 // Update the ID to paths map
                 id_to_paths
-                    .entry(resource.id.clone())
+                    .entry(id.item.clone())
                     .or_default()
                     .insert(path.clone());
 
-                (path, resource)
+                (path, id)
             })
             .collect();
 
@@ -316,7 +309,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         let index = ResourceIndex {
             root: root_path.to_path_buf(),
             id_to_paths,
-            path_to_resource,
+            path_to_id: path_to_resource,
         };
         Ok(index)
     }
@@ -326,20 +319,19 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         log::debug!("Updating index at root path: {:?}", self.root);
         log::trace!("Current index: {:#?}", self);
 
-        let mut added: HashMap<Id, HashSet<ResourcePathWithTimestamp>> =
-            HashMap::new();
+        let mut added: HashMap<Id, IndexedPaths> = HashMap::new();
         let mut removed: HashSet<Id> = HashSet::new();
 
         let current_paths = discover_paths(&self.root)?;
 
-        // Assuming that collection manipulation is faster than repeated
-        // lookups
-        let current_entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> =
+        // Assuming that collection manipulation
+        // is faster than repeated lookups
+        let current_entries: HashMap<PathBuf, Timestamped<Id>> =
             scan_entries(self.root(), current_paths);
-        let previous_entries = self.path_to_resource.clone();
-        // `preserved_entries` is the intersection of current_entries and
-        // previous_entries
-        let preserved_entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> =
+        let previous_entries = self.path_to_id.clone();
+        // `preserved_entries` is the intersection of
+        // current_entries and previous_entries
+        let preserved_entries: HashMap<PathBuf, Timestamped<Id>> =
             current_entries
                 .iter()
                 .filter_map(|(path, _resource)| {
@@ -349,9 +341,9 @@ impl<Id: ResourceId> ResourceIndex<Id> {
                 })
                 .collect();
 
-        // `created_entries` is the difference between current_entries and
-        // preserved_entries
-        let created_entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> =
+        // `created_entries` is the difference
+        // between current_entries and preserved_entries
+        let created_entries: HashMap<PathBuf, Timestamped<Id>> =
             current_entries
                 .iter()
                 .filter_map(|(path, resource)| {
@@ -366,14 +358,14 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         // `updated_entries` is the intersection of current_entries and
         // preserved_entries where the last modified time has changed
         // significantly (> RESOURCE_UPDATED_THRESHOLD)
-        let updated_entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> =
+        let updated_entries: HashMap<PathBuf, Timestamped<Id>> =
             current_entries
                 .into_iter()
                 .filter(|(path, _entry)| {
                     if !preserved_entries.contains_key(path) {
                         false
                     } else {
-                        let our_entry = &self.path_to_resource[path];
+                        let our_entry = &self.path_to_id[path];
                         let prev_modified = our_entry.last_modified;
 
                         let entry_path = self.root.join(path);
@@ -409,7 +401,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
                                         \twas {:?}
                                         \tnow {:?}
                                         \telapsed {:?}",
-                                            our_entry.id,
+                                            our_entry.item,
                                             path.display(),
                                             prev_modified,
                                             curr_modified,
@@ -426,7 +418,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
                 .collect();
 
         // Remove resources that are not in the current entries
-        let removed_entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> =
+        let removed_entries: HashMap<PathBuf, Timestamped<Id>> =
             previous_entries
                 .iter()
                 .filter_map(|(path, resource)| {
@@ -437,19 +429,19 @@ impl<Id: ResourceId> ResourceIndex<Id> {
                     }
                 })
                 .collect();
-        for (path, resource) in removed_entries {
+        for (path, id) in removed_entries {
             log::trace!(
                 "Resource removed: {:?}, last modified: {:?}",
                 path,
-                resource.last_modified
+                id.last_modified
             );
 
-            self.path_to_resource.remove(&path);
+            self.path_to_id.remove(&path);
             self.id_to_paths
-                .get_mut(&resource.id)
+                .get_mut(&id.item)
                 .unwrap()
                 .remove(&path);
-            let id = resource.id.clone();
+            let id = id.item.clone();
             // Only remove the ID if it has no paths
             if self.id_to_paths[&id].is_empty() {
                 self.id_to_paths.remove(&id);
@@ -458,32 +450,29 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         }
 
         // added_entries = created_entries + updated_entries
-        let added_entries: HashMap<PathBuf, ResourceIdWithTimestamp<Id>> =
-            created_entries
-                .into_iter()
-                .chain(updated_entries)
-                .collect();
+        let added_entries: HashMap<PathBuf, Timestamped<Id>> = created_entries
+            .into_iter()
+            .chain(updated_entries)
+            .collect();
 
-        for (path, resource) in added_entries {
+        for (path, id) in added_entries {
             log::trace!("Resource added: {:?}", path);
-            self.path_to_resource
-                .insert(path.clone(), resource.clone());
-            let id = resource.id.clone();
+            self.path_to_id.insert(path.clone(), id.clone());
+
+            let last_modified = id.last_modified;
+            let id = id.item.clone();
             self.id_to_paths
                 .entry(id.clone())
                 .or_default()
                 .insert(path.clone());
 
-            let resource_path_with_timestamp = ResourcePathWithTimestamp {
-                path: path.clone(),
-                last_modified: resource.last_modified,
+            let resource_path: Timestamped<PathBuf> = Timestamped {
+                item: path.clone(),
+                last_modified,
             };
             // If the ID is not in the added map, add it
             // If the ID is in the added map, add the path to the set
-            added
-                .entry(id)
-                .or_default()
-                .insert(resource_path_with_timestamp);
+            added.entry(id).or_default().insert(resource_path);
         }
 
         Ok(IndexUpdate { added, removed })

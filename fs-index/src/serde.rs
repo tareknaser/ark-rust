@@ -12,7 +12,7 @@ use serde::{
 
 use data_resource::ResourceId;
 
-use crate::{index::ResourceIdWithTimestamp, ResourceIndex};
+use crate::{index::TimestampedId, ResourceIndex};
 
 /// Data structure for serializing and deserializing the index
 #[derive(Serialize, Deserialize)]
@@ -45,7 +45,7 @@ where
         state.serialize_field("root", &self.root)?;
 
         let mut resources = HashMap::new();
-        for (path, resource) in &self.path_to_resource {
+        for (path, resource) in &self.path_to_id {
             let id = resource.id.clone();
             let last_modified = resource
                 .last_modified
@@ -87,7 +87,7 @@ where
         for (path, resource_data) in index_data.resources {
             let last_modified = SystemTime::UNIX_EPOCH
                 + std::time::Duration::from_nanos(resource_data.last_modified);
-            let resource = ResourceIdWithTimestamp {
+            let resource = TimestampedId {
                 id: resource_data.id,
                 last_modified,
             };
@@ -101,7 +101,7 @@ where
         Ok(ResourceIndex {
             root: index_data.root,
             id_to_paths,
-            path_to_resource,
+            path_to_id: path_to_resource,
         })
     }
 }
