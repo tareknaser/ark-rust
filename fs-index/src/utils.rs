@@ -11,7 +11,7 @@ use data_error::{ArklibError, Result};
 use data_resource::ResourceId;
 use fs_storage::{ARK_FOLDER, INDEX_PATH};
 
-use crate::{index::TimestampedId, ResourceIndex};
+use crate::{index::Timestamped, ResourceIndex};
 
 /// Load the index from the file system
 fn load_index<P: AsRef<Path>, Id: ResourceId>(
@@ -102,7 +102,7 @@ pub(crate) fn discover_paths<P: AsRef<Path>>(
 pub(crate) fn scan_entries<P: AsRef<Path>, Id: ResourceId>(
     root_path: P,
     paths: Vec<DirEntry>,
-) -> HashMap<PathBuf, TimestampedId<Id>> {
+) -> HashMap<PathBuf, Timestamped<Id>> {
     let mut path_to_resource = HashMap::new();
     for entry in paths {
         let resource = scan_entry(entry.clone());
@@ -120,7 +120,7 @@ pub(crate) fn scan_entries<P: AsRef<Path>, Id: ResourceId>(
 }
 
 /// A helper function to scan one entry and create an indexed resource
-pub(crate) fn scan_entry<Id: ResourceId>(entry: DirEntry) -> TimestampedId<Id> {
+pub(crate) fn scan_entry<Id: ResourceId>(entry: DirEntry) -> Timestamped<Id> {
     let metadata = entry.metadata().expect("Failed to get metadata");
     let last_modified = metadata
         .modified()
@@ -129,7 +129,10 @@ pub(crate) fn scan_entry<Id: ResourceId>(entry: DirEntry) -> TimestampedId<Id> {
     // Get the ID of the resource
     let id = Id::from_path(entry.path()).expect("Failed to get ID from path");
 
-    TimestampedId { id, last_modified }
+    Timestamped {
+        item: id,
+        last_modified,
+    }
 }
 
 /// A helper function to check if the entry should be indexed (not hidden or

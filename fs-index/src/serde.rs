@@ -12,7 +12,7 @@ use serde::{
 
 use data_resource::ResourceId;
 
-use crate::{index::TimestampedId, ResourceIndex};
+use crate::{index::Timestamped, ResourceIndex};
 
 /// Data structure for serializing and deserializing the index
 #[derive(Serialize, Deserialize)]
@@ -45,9 +45,8 @@ where
         state.serialize_field("root", &self.root)?;
 
         let mut resources = HashMap::new();
-        for (path, resource) in &self.path_to_id {
-            let id = resource.id.clone();
-            let last_modified = resource
+        for (path, id) in &self.path_to_id {
+            let last_modified = id
                 .last_modified
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .map_err(|e| {
@@ -58,7 +57,10 @@ where
                 })?
                 .as_nanos() as u64;
 
-            let resource_data = IndexedResourceData { id, last_modified };
+            let resource_data = IndexedResourceData {
+                id: id.item.clone(),
+                last_modified,
+            };
             resources.insert(path.clone(), resource_data);
         }
 
@@ -87,13 +89,14 @@ where
         for (path, resource_data) in index_data.resources {
             let last_modified = SystemTime::UNIX_EPOCH
                 + std::time::Duration::from_nanos(resource_data.last_modified);
-            let resource = TimestampedId {
-                id: resource_data.id,
+
+            let id: Timestamped<Id> = Timestamped {
+                item: resource_data.id,
                 last_modified,
             };
-            path_to_resource.insert(path.clone(), resource.clone());
+            path_to_resource.insert(path.clone(), id.clone());
             id_to_paths
-                .entry(resource.id.clone())
+                .entry(id.item.clone())
                 .or_insert_with(HashSet::new)
                 .insert(path);
         }
