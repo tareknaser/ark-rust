@@ -59,7 +59,7 @@ impl<Id> IndexedResource<Id> {
 /// Represents an item with its last modified time
 #[derive(Eq, Ord, PartialEq, PartialOrd, Hash, Clone, Debug)]
 pub struct Timestamped<Item> {
-    /// The unique identifier of the resource
+    /// The item to be timestamped
     pub(crate) item: Item,
     /// The last modified time of the resource (from the file system metadata)
     pub(crate) last_modified: SystemTime,
@@ -275,10 +275,7 @@ impl<Id: ResourceId> ResourceIndex<Id> {
         log::debug!("Building index at root path: {:?}", root_path.as_ref());
 
         let root_path = root_path.as_ref();
-        // Canonicalize the root path (only for unix-like systems)
-        // Note: On windows, canonicalization adds a prefix to the path
-        // which breaks the path comparison in the tests
-        #[cfg(target_family = "unix")]
+        // Canonicalize the root path
         let root_path = root_path.canonicalize()?;
 
         let mut id_to_paths: HashMap<Id, HashSet<PathBuf>> = HashMap::new();
