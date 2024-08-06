@@ -78,21 +78,11 @@ pub(crate) fn discover_paths<P: AsRef<Path>>(
 ) -> Result<Vec<DirEntry>> {
     log::debug!("Discovering paths at root path: {:?}", root_path.as_ref());
 
-    let walker = WalkDir::new(&root_path)
-        .min_depth(1) // Skip the root directory
+    let paths = WalkDir::new(root_path)
+        .min_depth(1)
         .into_iter()
-        .filter_entry(should_index); // Skip hidden files and empty files
-
-    // Filter out directories
-    let paths = walker
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            if entry.file_type().is_file() {
-                Some(entry)
-            } else {
-                None
-            }
-        })
+        .filter_map(|e| e.ok())
+        .filter(|e| should_index(e))
         .collect();
 
     Ok(paths)
@@ -144,6 +134,7 @@ fn should_index(entry: &walkdir::DirEntry) -> bool {
         .to_string_lossy()
         .starts_with('.')
     {
+        println!("Hidden REJECTED: {:?}", entry.path());
         return false;
     }
 
@@ -153,8 +144,23 @@ fn should_index(entry: &walkdir::DirEntry) -> bool {
         .map(|m| m.len() == 0)
         .unwrap_or(false)
     {
+        println!("Empty REJECTED: {:?}", entry.path());
         return false;
     }
+
+    // Check if the entry is a file
+    if !entry.file_type().is_file() {
+        println!("Not a file REJECTED: {:?}", entry.path());
+        return false;
+    }
+
+    // Check if it's 'root/index' file
+    if entry.path().ends_with(INDEX_PATH) {
+        println!("INDEX REJECTED: {:?}", entry.path());
+        return false;
+    }
+
+    println!("ACCEPTED: {:?}", entry.path());
 
     true
 }

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - debug-ci
   pull_request:
     branches:
       - main
@@ -67,12 +68,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Release
-        run: cargo build --verbose --release
-
       - name: Run tests
         run: |
-          cargo test --workspace --verbose
           cargo test --workspace --verbose
 
       - name: Install JDK

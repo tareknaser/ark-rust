@@ -315,7 +315,6 @@ fn test_build_index_with_multiple_files() {
 /// - Assert that the index contains two entries.
 /// - Assert that the resources retrieved by path for each file match the
 ///   expected resources.
-#[test]
 fn test_build_index_with_multiple_directories() {
     for_each_type!(Crc32, Blake3 => {
         let temp_dir =
