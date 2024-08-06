@@ -223,13 +223,33 @@ fn test_build_index_with_directory() {
             .expect("Failed to create temp dir");
         let root_path = temp_dir.path();
 
+        // print path
+        println!("Root path: {:?}", root_path);
+        // assert it exists
+        assert!(root_path.exists(), "Root path does not exist");
+
         let dir_path = root_path.join("dir");
         fs::create_dir(&dir_path).expect("Failed to create dir");
+
+        // print dir path
+        println!("Dir path: {:?}", dir_path);
+        // assert it exists
+        assert!(dir_path.exists(), "Dir path does not exist");
+
         let file_path = dir_path.join("file.txt");
         fs::write(&file_path, "file content").expect("Failed to write to file");
+
+        // print file path
+        println!("File path: {:?}", file_path);
+        // assert it exists
+        assert!(file_path.exists(), "File path does not exist");
+
         let expected_resource: IndexedResource<Id> =
             get_indexed_resource_from_file(&file_path, &root_path.to_path_buf())
                 .expect("Failed to get indexed resource");
+
+        // print expected resource
+        println!("Expected resource: {:?}", expected_resource);
 
         let index = ResourceIndex::build(root_path).expect("Failed to build index");
         assert_eq!(index.len(), 1, "{:?}", index);
