@@ -113,7 +113,7 @@ pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
                     .first()
                     .expect("Failed to get file path from event");
                 log::debug!("Updating index for file: {:?}", file);
-            
+
                 log::info!(
                     "\n Current resource index: {}",
                     index
@@ -123,7 +123,7 @@ pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
                         .collect::<Vec<String>>()
                         .join("\n\t")
                 );
-                
+
                 let relative_path = file.strip_prefix(&root_path)?;
                 log::info!("Relative path: {:?}", relative_path);
                 index.update_one(relative_path)?;
