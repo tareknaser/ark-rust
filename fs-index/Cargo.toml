@@ -32,6 +32,8 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.10"
 # Depending on `dev-hash` for testing
 dev-hash = { path = "../dev-hash" }
+# Examples
+tokio = { version = "1.40", features = ["full"] }
 
 [[bench]]
 name = "resource_index_benchmark"

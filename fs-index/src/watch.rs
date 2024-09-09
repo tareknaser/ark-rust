@@ -76,7 +76,7 @@ pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
                     .expect("Failed to get file path from event");
                 log::debug!("Updating index for file: {:?}", file);
                 let relative_path = file.strip_prefix(&root_path)?;
-                index.update_one(&relative_path)?;
+                index.update_one(relative_path)?;
 
                 index.store()?;
                 info!("Index updated and stored");
