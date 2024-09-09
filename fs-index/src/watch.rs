@@ -61,12 +61,50 @@ pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
                 {
                     continue;
                 }
-                // If the event is not a create, modify or remove, ignore it
-                if !(event.kind.is_create()
-                    || event.kind.is_modify()
-                    || event.kind.is_remove())
-                {
-                    continue;
+                // We only care for:
+                // - file modifications
+                // - file renames
+                // - file creations
+                // - file deletions
+                match event.kind {
+                    notify::EventKind::Modify(_) => match event {
+                        notify::Event {
+                            kind:
+                                notify::EventKind::Modify(
+                                    notify::event::ModifyKind::Data(_),
+                                ),
+                            ..
+                        } => {}
+                        notify::Event {
+                            kind:
+                                notify::EventKind::Modify(
+                                    notify::event::ModifyKind::Name(_),
+                                ),
+                            ..
+                        } => {}
+                        _ => continue,
+                    },
+                    notify::EventKind::Create(_) => match event {
+                        notify::Event {
+                            kind:
+                                notify::EventKind::Create(
+                                    notify::event::CreateKind::File,
+                                ),
+                            ..
+                        } => {}
+                        _ => continue,
+                    },
+                    notify::EventKind::Remove(_) => match event {
+                        notify::Event {
+                            kind:
+                                notify::EventKind::Remove(
+                                    notify::event::RemoveKind::File,
+                                ),
+                            ..
+                        } => {}
+                        _ => continue,
+                    },
+                    _ => {}
                 }
 
                 info!("Detected event: {:?}", event);
@@ -75,7 +113,19 @@ pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
                     .first()
                     .expect("Failed to get file path from event");
                 log::debug!("Updating index for file: {:?}", file);
+            
+                log::info!(
+                    "\n Current resource index: {}",
+                    index
+                        .resources()
+                        .iter()
+                        .map(|x| x.path().to_str().unwrap().to_string())
+                        .collect::<Vec<String>>()
+                        .join("\n\t")
+                );
+                
                 let relative_path = file.strip_prefix(&root_path)?;
+                log::info!("Relative path: {:?}", relative_path);
                 index.update_one(relative_path)?;
 
                 index.store()?;
