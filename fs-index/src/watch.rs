@@ -67,44 +67,19 @@ pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
                 // - file creations
                 // - file deletions
                 match event.kind {
-                    notify::EventKind::Modify(_) => match event {
-                        notify::Event {
-                            kind:
-                                notify::EventKind::Modify(
-                                    notify::event::ModifyKind::Data(_),
-                                ),
-                            ..
-                        } => {}
-                        notify::Event {
-                            kind:
-                                notify::EventKind::Modify(
-                                    notify::event::ModifyKind::Name(_),
-                                ),
-                            ..
-                        } => {}
-                        _ => continue,
-                    },
-                    notify::EventKind::Create(_) => match event {
-                        notify::Event {
-                            kind:
-                                notify::EventKind::Create(
-                                    notify::event::CreateKind::File,
-                                ),
-                            ..
-                        } => {}
-                        _ => continue,
-                    },
-                    notify::EventKind::Remove(_) => match event {
-                        notify::Event {
-                            kind:
-                                notify::EventKind::Remove(
-                                    notify::event::RemoveKind::File,
-                                ),
-                            ..
-                        } => {}
-                        _ => continue,
-                    },
-                    _ => {}
+                    notify::EventKind::Modify(
+                        notify::event::ModifyKind::Data(_),
+                    )
+                    | notify::EventKind::Modify(
+                        notify::event::ModifyKind::Name(_),
+                    )
+                    | notify::EventKind::Create(
+                        notify::event::CreateKind::File,
+                    )
+                    | notify::EventKind::Remove(
+                        notify::event::RemoveKind::File,
+                    ) => {}
+                    _ => continue,
                 }
 
                 info!("Detected event: {:?}", event);
