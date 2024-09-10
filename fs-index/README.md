@@ -18,6 +18,8 @@ The most important struct in this crate is `ResourceIndex` which comes with:
 - **Watch API**
   - `watch`: Method to watch a directory for changes and update the index accordingly.
 
+> **Note:** To see the watch API in action, run the `index_watch` example or check `ark-cli watch` command.
+
 ## Custom Serialization
 
 The `ResourceIndex` struct includes a custom serialization implementation to avoid writing a large repetitive index file with double maps.
@@ -32,8 +34,14 @@ The `ResourceIndex` struct includes a custom serialization implementation to avo
 
 To get started, take a look at the examples in the `examples/` directory.
 
-To run a specific example:
+To run a specific example, run this command from the root of the project or the root of the crate:
 
 ```shell
-cargo run --example resource_index
+cargo run --example <example_name>
+```
+
+For example, to run the `index_watch` example:
+
+```shell
+cargo run --example index_watch
 ```
