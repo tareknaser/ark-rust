@@ -82,26 +82,33 @@ pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
                     _ => continue,
                 }
 
-                info!("Detected event: {:?}", event);
-                let file = event
-                    .paths
-                    .first()
-                    .expect("Failed to get file path from event");
-                log::debug!("Updating index for file: {:?}", file);
+                // If the event requires a rescan, update the entire index
+                // else, update the index for the specific file
+                if event.need_rescan() {
+                    info!("Detected rescan event: {:?}", event);
+                    index.update_all()?;
+                } else {
+                    info!("Detected event: {:?}", event);
+                    let file = event
+                        .paths
+                        .first()
+                        .expect("Failed to get file path from event");
+                    log::debug!("Updating index for file: {:?}", file);
 
-                log::info!(
-                    "\n Current resource index: {}",
-                    index
-                        .resources()
-                        .iter()
-                        .map(|x| x.path().to_str().unwrap().to_string())
-                        .collect::<Vec<String>>()
-                        .join("\n\t")
-                );
+                    log::info!(
+                        "\n Current resource index: {}",
+                        index
+                            .resources()
+                            .iter()
+                            .map(|x| x.path().to_str().unwrap().to_string())
+                            .collect::<Vec<String>>()
+                            .join("\n\t")
+                    );
 
-                let relative_path = file.strip_prefix(&root_path)?;
-                log::info!("Relative path: {:?}", relative_path);
-                index.update_one(relative_path)?;
+                    let relative_path = file.strip_prefix(&root_path)?;
+                    log::info!("Relative path: {:?}", relative_path);
+                    index.update_one(relative_path)?;
+                }
 
                 index.store()?;
                 info!("Index updated and stored");
