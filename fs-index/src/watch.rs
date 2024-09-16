@@ -1,9 +1,4 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    thread,
-    time::Duration,
-};
+use std::{fs, path::Path, thread, time::Duration};
 
 use async_stream::stream;
 use futures::Stream;
@@ -21,7 +16,7 @@ use crate::{IndexUpdate, ResourceIndex};
 #[derive(Debug)]
 pub enum WatchEvent<Id: ResourceId> {
     /// Represents an update to a single resource.
-    UpdatedOne(PathBuf),
+    UpdatedOne(IndexUpdate<Id>),
     /// Represents an update to all resources.
     UpdatedAll(IndexUpdate<Id>),
 }
@@ -103,7 +98,7 @@ pub fn watch_index<P: AsRef<Path>, Id: ResourceId + 'static>(
                     // On macOS, we noticed that force deleting a file
                     // triggers a metadata change event for some reason
                     | notify::EventKind::Modify(
-                        notify::event::ModifyKind::Metadata(_),
+                        notify::event::ModifyKind::Metadata(notify::event::MetadataKind::Any),
                     )
                     | notify::EventKind::Create(
                         notify::event::CreateKind::File,
@@ -140,12 +135,15 @@ pub fn watch_index<P: AsRef<Path>, Id: ResourceId + 'static>(
                         }
                     };
 
-                    if let Err(e) = index.update_one(relative_path) {
-                        log::error!("Failed to update one: {:?}", e);
-                        continue;
+                    match index.update_one(relative_path) {
+                        Ok(update_result) => {
+                            WatchEvent::UpdatedOne(update_result)
+                        }
+                        Err(e) => {
+                            log::error!("Failed to update one: {:?}", e);
+                            continue;
+                        }
                     }
-
-                    WatchEvent::UpdatedOne(relative_path.to_path_buf())
                 };
 
                 if let Err(e) = index.store() {

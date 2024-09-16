@@ -20,8 +20,8 @@ async fn main() -> Result<()> {
 
     while let Some(value) = stream.next().await {
         match value {
-            WatchEvent::UpdatedOne(path) => {
-                println!("Updated file: {:?}", path);
+            WatchEvent::UpdatedOne(update) => {
+                println!("Updated file: {:?}", update);
             }
             WatchEvent::UpdatedAll(update) => {
                 println!("Updated all: {:?}", update);
