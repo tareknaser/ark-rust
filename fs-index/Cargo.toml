@@ -10,14 +10,16 @@ bench = false
 
 [dependencies]
 log = { version = "0.4.17", features = ["release_max_level_off"] }
-env_logger = "0.11"
 walkdir = "2.3.2"
 anyhow = "1.0.58"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 # For the watch API
 notify = "6.1"
+notify-debouncer-full = "0.3"
 futures = "0.3"
+async-stream = "0.3"
+tokio = { version = "1.40", features = ["full"] }
 
 
 fs-storage = { path = "../fs-storage" }
@@ -32,8 +34,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.10"
 # Depending on `dev-hash` for testing
 dev-hash = { path = "../dev-hash" }
-# Examples
-tokio = { version = "1.40", features = ["full"] }
 
 [[bench]]
 name = "resource_index_benchmark"

@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use fs_index::watch_index;
+use futures::{pin_mut, StreamExt};
+
+use fs_index::{watch_index, WatchEvent};
 
 use crate::{AppError, ResourceId};
 
@@ -20,8 +22,20 @@ pub struct Watch {
 
 impl Watch {
     pub async fn run(&self) -> Result<(), AppError> {
-        watch_index::<_, ResourceId>(&self.path)
-            .await
-            .map_err(|err| AppError::IndexError(err.to_string()))
+        let stream = watch_index::<_, ResourceId>(&self.path);
+        pin_mut!(stream);
+
+        while let Some(value) = stream.next().await {
+            match value {
+                WatchEvent::UpdatedOne(path) => {
+                    println!("Updated file: {:?}", path);
+                }
+                WatchEvent::UpdatedAll(update) => {
+                    println!("Updated all: {:?}", update);
+                }
+            }
+        }
+
+        Ok(())
     }
 }

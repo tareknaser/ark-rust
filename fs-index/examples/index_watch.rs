@@ -1,35 +1,33 @@
-use std::{path::Path, thread};
+use std::path::Path;
 
 use anyhow::Result;
-use log::LevelFilter;
+use futures::{pin_mut, StreamExt};
 
 use dev_hash::Blake3;
-use fs_index::watch_index;
+use fs_index::{watch_index, WatchEvent};
 
-/// Example demonstrating how to use fs_index to watch a directory for changes
-/// in a separate thread. This automatically updates the index when changes are
-/// detected.
-fn main() -> Result<()> {
-    env_logger::builder()
-        .filter_level(LevelFilter::Debug)
-        .init();
-
+/// A simple example of using `watch_index` to monitor a directory for file
+/// changes. This asynchronously listens for updates and prints the paths of
+/// changed files.
+#[tokio::main]
+async fn main() -> Result<()> {
     // Change this to the path of the directory you want to watch
     let root = Path::new("test-assets");
 
-    let thread_handle = thread::spawn(move || {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(async move {
-                if let Err(err) = watch_index::<_, Blake3>(root).await {
-                    eprintln!("Error in watching index: {:?}", err);
-                }
-            });
-    });
+    let stream = watch_index::<_, Blake3>(root);
 
-    thread_handle
-        .join()
-        .expect("Failed to join thread");
+    pin_mut!(stream); // needed for iteration
+
+    while let Some(value) = stream.next().await {
+        match value {
+            WatchEvent::UpdatedOne(path) => {
+                println!("Updated file: {:?}", path);
+            }
+            WatchEvent::UpdatedAll(update) => {
+                println!("Updated all: {:?}", update);
+            }
+        }
+    }
 
     Ok(())
 }

@@ -1,59 +1,84 @@
-use std::{fs, path::Path};
-
-use anyhow::Result;
-use futures::{
-    channel::mpsc::{channel, Receiver},
-    SinkExt, StreamExt,
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    thread,
+    time::Duration,
 };
-use log::info;
-use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+
+use async_stream::stream;
+use futures::Stream;
+use notify::{RecursiveMode, Watcher};
+use notify_debouncer_full::new_debouncer;
+use tokio::sync::mpsc;
 
 use data_resource::ResourceId;
 use fs_storage::ARK_FOLDER;
 
-use crate::ResourceIndex;
+use crate::{IndexUpdate, ResourceIndex};
 
-/// Watches a given directory for file system changes and automatically updates
-/// the resource index.
+/// Represents the different kinds of events that can occur when watching the
+/// resource index.
+#[derive(Debug)]
+pub enum WatchEvent<Id: ResourceId> {
+    /// Represents an update to a single resource.
+    UpdatedOne(PathBuf),
+    /// Represents an update to all resources.
+    UpdatedAll(IndexUpdate<Id>),
+}
+
+/// Watches for file system changes and emits events related to the
+/// [ResourceIndex].
 ///
-/// This function continuously monitors the specified directory and responds to
-/// file system events such as file creation, modification, and deletion. When
-/// an event is detected, the function updates the associated resource index and
-/// stores the changes.
-///
-/// The function runs asynchronously, whcih makes it suitable for non-blocking
-/// contexts. It uses a recursive watcher to track all changes within the
-/// directory tree. Events related to the internal `.ark` folder are ignored to
-/// prevent unnecessary updates.
-///
-/// # Arguments
-///
-/// * `root_path` - The root directory to be watched. This path is canonicalized
-///   to handle symbolic links and relative paths correctly.
-pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
+/// This function sets up a file watcher that monitors a specified root path for
+/// changes to files. It sends events such as file creations, modifications,
+/// renames, and deletions through an asynchronous stream. The function uses a
+/// debouncer to ensure that multiple rapid events are collapsed into a single
+/// event.
+pub fn watch_index<P: AsRef<Path>, Id: ResourceId + 'static>(
     root_path: P,
-) -> Result<()> {
+) -> impl Stream<Item = WatchEvent<Id>> {
     log::debug!(
         "Attempting to watch index at root path: {:?}",
         root_path.as_ref()
     );
 
-    let root_path = fs::canonicalize(root_path.as_ref())?;
-    let mut index: ResourceIndex<Id> = ResourceIndex::build(&root_path)?;
-    index.store()?;
+    let root_path = fs::canonicalize(root_path.as_ref()).unwrap();
+    let mut index: ResourceIndex<Id> =
+        ResourceIndex::build(&root_path).unwrap();
+    index.store().unwrap();
 
-    let (mut watcher, mut rx) = async_watcher()?;
-    info!("Watching directory: {:?}", root_path);
-    let config = Config::default();
-    watcher.configure(config)?;
-    watcher.watch(root_path.as_ref(), RecursiveMode::Recursive)?;
-    info!("Started watcher with config: \n\t{:?}", config);
-
+    let (tx, mut rx) = mpsc::channel(100);
     let ark_folder = root_path.join(ARK_FOLDER);
-    while let Some(res) = rx.next().await {
-        match res {
-            Ok(event) => {
-                // If the event is a change in .ark folder, ignore it
+
+    // We need to spawn a new thread to run the blocking file system watcher
+    thread::spawn(move || {
+        // Setup the synchronous channel (notify debouncer expects this)
+        let (sync_tx, sync_rx) = std::sync::mpsc::channel();
+
+        let mut debouncer =
+            new_debouncer(Duration::from_secs(2), None, sync_tx).unwrap();
+        let watcher = debouncer.watcher();
+        watcher
+            .watch(&root_path, RecursiveMode::Recursive)
+            .unwrap();
+        log::info!("Started debouncer file system watcher for {:?}", root_path);
+
+        while let Ok(events) = sync_rx.recv() {
+            let events = match events {
+                Ok(evts) => evts,
+                Err(errs) => {
+                    for err in errs {
+                        log::error!("Error receiving event: {:?}", err);
+                    }
+                    continue;
+                }
+            };
+
+            // Send events to the async channel
+            for event in events {
+                log::trace!("Received event: {:?}", event);
+
+                // If the event is a change in the .ark folder, ignore it
                 if event
                     .paths
                     .iter()
@@ -61,17 +86,24 @@ pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
                 {
                     continue;
                 }
+
+                let event_kind = event.event.kind;
                 // We only care for:
                 // - file modifications
                 // - file renames
                 // - file creations
                 // - file deletions
-                match event.kind {
+                match event_kind {
                     notify::EventKind::Modify(
                         notify::event::ModifyKind::Data(_),
                     )
                     | notify::EventKind::Modify(
                         notify::event::ModifyKind::Name(_),
+                    )
+                    // On macOS, we noticed that force deleting a file
+                    // triggers a metadata change event for some reason
+                    | notify::EventKind::Modify(
+                        notify::event::ModifyKind::Metadata(_),
                     )
                     | notify::EventKind::Create(
                         notify::event::CreateKind::File,
@@ -82,58 +114,58 @@ pub async fn watch_index<P: AsRef<Path>, Id: ResourceId>(
                     _ => continue,
                 }
 
-                // If the event requires a rescan, update the entire index
-                // else, update the index for the specific file
-                if event.need_rescan() {
-                    info!("Detected rescan event: {:?}", event);
-                    index.update_all()?;
+                let watch_event: WatchEvent<Id> = if event.need_rescan() {
+                    log::info!("Detected rescan event: {:?}", event);
+                    match index.update_all() {
+                        Ok(update_result) => {
+                            WatchEvent::UpdatedAll(update_result)
+                        }
+                        Err(e) => {
+                            log::error!("Failed to update all: {:?}", e);
+                            continue;
+                        }
+                    }
                 } else {
-                    info!("Detected event: {:?}", event);
+                    // Update the index for the specific file
                     let file = event
                         .paths
                         .first()
                         .expect("Failed to get file path from event");
-                    log::debug!("Updating index for file: {:?}", file);
 
-                    log::info!(
-                        "\n Current resource index: {}",
-                        index
-                            .resources()
-                            .iter()
-                            .map(|x| x.path().to_str().unwrap().to_string())
-                            .collect::<Vec<String>>()
-                            .join("\n\t")
-                    );
+                    let relative_path = match file.strip_prefix(&root_path) {
+                        Ok(path) => path,
+                        Err(e) => {
+                            log::error!("Failed to get relative path: {:?}", e);
+                            continue;
+                        }
+                    };
 
-                    let relative_path = file.strip_prefix(&root_path)?;
-                    log::info!("Relative path: {:?}", relative_path);
-                    index.update_one(relative_path)?;
+                    if let Err(e) = index.update_one(relative_path) {
+                        log::error!("Failed to update one: {:?}", e);
+                        continue;
+                    }
+
+                    WatchEvent::UpdatedOne(relative_path.to_path_buf())
+                };
+
+                if let Err(e) = index.store() {
+                    log::error!("Failed to store index: {:?}", e);
                 }
 
-                index.store()?;
-                info!("Index updated and stored");
+                // Use blocking send to the async channel because we are in a
+                // separate thread
+                if tx.blocking_send(watch_event).is_err() {
+                    log::error!("Failed to send event to async channel");
+                    break;
+                }
             }
-            Err(e) => log::error!("Error in watcher: {:?}", e),
+        }
+    });
+
+    // Create an async stream that reads from the receiver
+    stream! {
+        while let Some(event) = rx.recv().await {
+            yield event;
         }
     }
-
-    unreachable!("Watcher stream ended unexpectedly");
-}
-
-fn async_watcher(
-) -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
-    let (mut tx, rx) = channel(1);
-
-    let watcher = RecommendedWatcher::new(
-        move |res| {
-            futures::executor::block_on(async {
-                if let Err(err) = tx.send(res).await {
-                    log::error!("Error sending event: {:?}", err);
-                }
-            })
-        },
-        Config::default(),
-    )?;
-
-    Ok((watcher, rx))
 }
