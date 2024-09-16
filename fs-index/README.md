@@ -15,7 +15,7 @@ The most important struct in this crate is `ResourceIndex` which comes with:
   - `get_resource_by_path`: Query a resource from the index by its path.
 - **Selective API**
   - `update_one`: Method to manually update a specific resource by selectively rescanning a single file.
-- **Watch API**
+- **Watch API** (Enable with `watch` feature)
   - `watch`: Method to watch a directory for changes and update the index accordingly.
 
 > **Note:** To see the watch API in action, run the `index_watch` example or check `ark-cli watch` command.
