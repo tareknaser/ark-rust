@@ -529,9 +529,8 @@ impl<Id: ResourceId> ResourceIndex<Id> {
             // If the ID has no paths, remove it from the ID to paths map
             if self.id_to_paths[&id.item].is_empty() {
                 self.id_to_paths.remove(&id.item);
+                result.removed.insert(id.item);
             }
-
-            result.removed.insert(id.item);
             log::trace!("Resource removed: {:?}", path);
         } else {
             // If the entry exists in the file system, it's an addition or
