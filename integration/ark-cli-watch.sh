@@ -4,6 +4,7 @@
 WATCH_DIR="test-assets"
 OUTPUT_FILE="ark-watch-output.txt"
 INDEX_FILE="$WATCH_DIR/.ark/index"
+ARK_CLI="./target/release/ark-cli"
 
 # Function to check the index file content
 check_index() {
@@ -34,7 +35,7 @@ check_index() {
 
 # Start `ark-cli watch` in the background and capture output
 echo "Starting ark-cli watch on $WATCH_DIR..."
-ark-cli watch "$WATCH_DIR" > "$OUTPUT_FILE" &
+$ARK_CLI watch "$WATCH_DIR" > "$OUTPUT_FILE" &
 WATCH_PID=$!
 sleep 1  # Wait a bit to ensure the watch command is up
 
