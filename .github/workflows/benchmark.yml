@@ -1,9 +1,11 @@
-name: Run benchmarks
+name: Run Benchmarks
 
 on:
-  pull_request:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - Verify Build
+    types:
+      - completed
 
 jobs:
   run_benchmarks:
