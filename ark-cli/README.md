@@ -2,6 +2,8 @@
 
 ### Usage
 
+a non breaking change
+
 ```shell
 ark-cli <SUBCOMMAND>
 
