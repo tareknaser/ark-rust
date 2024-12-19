@@ -135,7 +135,8 @@ fn test_store_and_load_index_with_collisions() {
             ResourceIndex::build(root_path).expect("Failed to build index");
         let checksum = Id::from_path(&file_path).expect("Failed to get checksum");
         assert_eq!(index.len(), 4, "{:?}", index);
-        assert_eq!(index.collisions().len(), 1, "{:?}", index);
+        // a breaking change. ci should fail
+        assert_eq!(index.collisions().len(), 2, "{:?}", index);
         assert_eq!(index.collisions()[&checksum].len(), 4, "{:?}", index);
         index.store().expect("Failed to store index");
 
