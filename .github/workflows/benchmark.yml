@@ -1,14 +1,19 @@
-name: Run benchmarks
+name: Run Benchmarks
 
 on:
-  pull_request:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - Verify Build
+    types:
+      - completed
 
 jobs:
   run_benchmarks:
     name: Run Benchmarks
     runs-on: ubuntu-latest
+
+    # Only run this job if the workflow run was triggered by a pull request
+    if: ${{ github.event.pull_request != null }}
 
     steps:
       - uses: actions/checkout@v4
@@ -16,5 +21,5 @@ jobs:
       - name: Run Criterion
         uses: boa-dev/criterion-compare-action@v3
         with:
-          branchName: ${{ github.base_ref }}
+          branchName: ${{ github.event.pull_request.base.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
