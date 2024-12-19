@@ -59,3 +59,41 @@ jobs:
         with:
           name: release-build-${{ matrix.os }}
           path: target/release/
+
+  java-bindings:
+    name: Java Bindings
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14]
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: release-build-${{ matrix.os }}
+          path: ./release
+
+      - name: Install JDK
+        uses: actions/setup-java@v4.2.1
+        with:
+          distribution: "temurin"
+          java-version: "22"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          link-to-sdk: true
+          ndk-version: r28-beta2
+
+      - name: Run Java Tests
+        run: gradle test
+        working-directory: ./java
